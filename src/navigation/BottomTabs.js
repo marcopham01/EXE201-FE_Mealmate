@@ -2,7 +2,10 @@ import React from 'react';
 import { View, TouchableOpacity, Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import HomeScreen from '../screens/HomeScreen';
-import PlaceholderScreen from '../screens/PlaceholderScreen';
+import CameraCaptureScreen from '../screens/CameraCaptureScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import AnalyzeScreen from '../screens/AnalyzeScreen';
+import RecipeScreen from '../screens/RecipeScreen';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 const Tab = createBottomTabNavigator();
@@ -15,6 +18,11 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
     { key: 'Recipes', icon: 'restaurant-outline', label: 'Công thức' },
     { key: 'Profile', icon: 'person-outline', label: 'Hồ sơ' },
   ];
+
+  const focusedRoute = state.routes[state.index]?.name;
+  if (focusedRoute === 'Camera') {
+    return null;
+  }
 
   return (
     <View style={{ position: 'absolute', left: 16, right: 16, bottom: 16 }}>
@@ -95,10 +103,10 @@ export default function BottomTabs() {
   return (
     <Tab.Navigator screenOptions={{ headerShown: false }} tabBar={(props) => <CustomTabBar {...props} /> }>
       <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarStyle: { display: 'none' } }} />
-      <Tab.Screen name="Analytics" component={PlaceholderScreen} />
-      <Tab.Screen name="Camera" component={PlaceholderScreen} />
-      <Tab.Screen name="Recipes" component={PlaceholderScreen} />
-      <Tab.Screen name="Profile" component={PlaceholderScreen} />
+      <Tab.Screen name="Analytics" component={AnalyzeScreen} />
+      <Tab.Screen name="Camera" component={CameraCaptureScreen} />
+      <Tab.Screen name="Recipes" component={RecipeScreen} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
 }

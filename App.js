@@ -1,15 +1,26 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import BottomTabs from './src/navigation/BottomTabs';
+import AuthStack from './src/navigation/AuthStack';
+import { WeekProvider } from './src/context/WeekContext';
+import { PremiumProvider } from './src/context/PremiumContext';
+import { NotificationProvider } from './src/context/NotificationContext';
+import { MealsProvider } from './src/context/MealsContext';
 
 export default function App() {
-  // console.log(process.env.EXPO_PUBLIC_API_KEY);
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
-        <BottomTabs />
-      </NavigationContainer>
+      <WeekProvider>
+        <PremiumProvider>
+          <NotificationProvider>
+            <MealsProvider>
+              <NavigationContainer>
+                <AuthStack />
+              </NavigationContainer>
+            </MealsProvider>
+          </NotificationProvider>
+        </PremiumProvider>
+      </WeekProvider>
     </SafeAreaProvider>
   );
 }
