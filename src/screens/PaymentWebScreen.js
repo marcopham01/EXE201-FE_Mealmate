@@ -9,7 +9,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 export default function PaymentWebScreen({ route, navigation }) {
   const { url, orderCode } = route.params || {};
-  const { setPremiumActive } = usePremium();
+  const { setPremiumActive, refreshPremiumStatus } = usePremium();
   const [checking, setChecking] = React.useState(false);
   const [token, setToken] = React.useState(route.params?.token || null);
 
@@ -78,8 +78,12 @@ export default function PaymentWebScreen({ route, navigation }) {
           const vr = await verifyPayment({ orderCode }, tk);
           console.log('[PaymentCheck] verifyPayment response', vr);
           if (normalizeIsPaid(vr) || ['paid','success','succeeded','completed','complete'].includes(String(vr?.status).toLowerCase())) {
+            // Đợi refresh premium status từ server để đảm bảo backend đã update
+            await refreshPremiumStatus();
+            // Set premium active sau khi refresh để đảm bảo UI cập nhật
             setPremiumActive(true);
             alert('Thanh toán thành công!');
+            // Navigate tới onboarding để nhập thông tin BMI
             navigation.reset({ index: 0, routes: [{ name: 'OnboardingGoal' }] });
             return;
           }
@@ -168,8 +172,12 @@ export default function PaymentWebScreen({ route, navigation }) {
       }
 
       if (paidOk) {
+        // Đợi refresh premium status từ server để đảm bảo backend đã update
+        await refreshPremiumStatus();
+        // Set premium active sau khi refresh để đảm bảo UI cập nhật
         setPremiumActive(true);
         alert('Thanh toán thành công!');
+        // Navigate tới onboarding để nhập thông tin BMI
         navigation.reset({ index: 0, routes: [{ name: 'OnboardingGoal' }] });
       } else {
         const mapBrief = (lastItems || []).slice(0, 10).map((t) => ({
@@ -190,8 +198,12 @@ export default function PaymentWebScreen({ route, navigation }) {
           const notExpired = expires ? new Date(expires).getTime() > Date.now() : false;
           console.log('[PaymentCheck] Profile premium', { active, expires });
           if (active && notExpired) {
+            // Đợi refresh premium status từ server để đảm bảo backend đã update
+            await refreshPremiumStatus();
+            // Set premium active sau khi refresh để đảm bảo UI cập nhật
             setPremiumActive(true);
             alert('Thanh toán thành công!');
+            // Navigate tới onboarding để nhập thông tin BMI
             navigation.reset({ index: 0, routes: [{ name: 'OnboardingGoal' }] });
             return;
           }

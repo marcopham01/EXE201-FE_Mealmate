@@ -22,6 +22,7 @@ import OnboardingWeightScreen from '../screens/OnboardingWeightScreen';
 import OnboardingBMIResultScreen from '../screens/OnboardingBMIResultScreen';
 import OnboardingGeneratingScreen from '../screens/OnboardingGeneratingScreen';
 import OnboardingPlanReadyScreen from '../screens/OnboardingPlanReadyScreen';
+import SearchRecipeScreen from '../screens/SearchRecipeScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -52,6 +53,8 @@ export default function AuthStack() {
       <Stack.Screen name="ConfirmPhoto" component={ConfirmPhotoScreen} />
       <Stack.Screen name="Analyzing" component={AnalyzingScreen} />
       <Stack.Screen name="AnalyzeResult" component={AnalyzeResultScreen} />
+      {/* Recipe search */}
+      <Stack.Screen name="SearchRecipe" component={SearchRecipeScreen} />
     </Stack.Navigator>
   );
 }

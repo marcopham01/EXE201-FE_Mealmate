@@ -1,7 +1,23 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { usePremium } from '../context/PremiumContext';
 
 export default function OnboardingPlanReadyScreen({ navigation }) {
+  const { refreshPremiumStatus } = usePremium();
+  
+  // Refresh premium status khi meal plan đã sẵn sàng (hoàn thành onboarding)
+  React.useEffect(() => {
+    refreshPremiumStatus();
+  }, [refreshPremiumStatus]);
+  
+  const handleConfirm = async () => {
+    // Refresh lại một lần nữa trước khi về Main để đảm bảo premium status được cập nhật
+    // Đợi refresh hoàn tất để đảm bảo HomeScreen hiển thị đúng trạng thái premium
+    await refreshPremiumStatus();
+    // Navigate về Main (HomeScreen) - HomeScreen sẽ tự động refresh khi focus
+    navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
+  };
+  
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Kế hoạch bữa ăn cá nhân của bạn đã sẵn sàng</Text>
@@ -12,7 +28,7 @@ export default function OnboardingPlanReadyScreen({ navigation }) {
         <Row left="Bữa tối" right="602 Cal" />
         <Row left="Bữa phụ" right="481 Cal" last />
       </View>
-      <TouchableOpacity style={styles.btn} onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}>
+      <TouchableOpacity style={styles.btn} onPress={handleConfirm}>
         <Text style={styles.btnText}>Xác nhận</Text>
       </TouchableOpacity>
     </View>

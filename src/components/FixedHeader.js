@@ -1,11 +1,14 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useNotifications } from '../context/NotificationContext';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function FixedHeader({ extraRight, onPressPremium }) {
   const { unreadCount } = useNotifications();
+  const navigation = useNavigation();
+  
   return (
     <View style={styles.header}>
       <View style={styles.leftBlock}>
@@ -16,16 +19,23 @@ export default function FixedHeader({ extraRight, onPressPremium }) {
         </View>
       </View>
       <View style={styles.rightBlock}>
-        {extraRight ? (
-          <View>
-            {extraRight}
-            {unreadCount > 0 ? (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
+        {/* Luôn hiển thị chuông thông báo */}
+        <TouchableOpacity 
+          activeOpacity={0.9} 
+          style={styles.bellBtn} 
+          onPress={() => navigation.navigate('Notifications')}
+        >
+          <Ionicons name="notifications-outline" size={18} color="#4D3B2C" />
+          {/* Chỉ hiển thị badge khi có thông báo chưa đọc */}
+          {unreadCount > 0 ? (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+        {/* Extra right element (nếu có) */}
+        {extraRight ? extraRight : null}
+        {/* Premium button */}
         {onPressPremium ? (
           <TouchableOpacity activeOpacity={0.88} onPress={onPressPremium}>
             <LinearGradient colors={["#E8D29D", "#F8CF73"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.premiumBtn}>
@@ -58,6 +68,33 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3,
   },
   premiumText: { color: '#3C2C21', fontWeight: '800', fontSize: 15 },
-  badge: { position: 'absolute', right: -4, top: -4, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, backgroundColor: '#F1CF82', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FFF' },
+  bellBtn: { 
+    width: 44, 
+    height: 44, 
+    borderRadius: 22, 
+    backgroundColor: '#FFFFFF', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    shadowColor: '#000', 
+    shadowOpacity: 0.10, 
+    shadowRadius: 8, 
+    shadowOffset: { width: 0, height: 3 }, 
+    elevation: 4,
+    position: 'relative',
+  },
+  badge: { 
+    position: 'absolute', 
+    right: -4, 
+    top: -4, 
+    minWidth: 18, 
+    height: 18, 
+    paddingHorizontal: 4, 
+    borderRadius: 9, 
+    backgroundColor: '#F1CF82', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    borderWidth: 1, 
+    borderColor: '#FFF' 
+  },
   badgeText: { fontSize: 10, fontWeight: '900', color: '#3C2C21' },
 });

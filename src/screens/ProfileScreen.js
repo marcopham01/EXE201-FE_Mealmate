@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getProfile } from '../api/auth';
 import FixedHeader from '../components/FixedHeader';
 import { usePremium } from '../context/PremiumContext';
@@ -23,30 +23,31 @@ export default function ProfileScreen() {
   const [profile, setProfile] = React.useState(null);
   const [error, setError] = React.useState('');
   const navigation = useNavigation();
-  const { premiumActive: isPremium } = usePremium();
+  const { premiumActive: isPremium, refreshPremiumStatus } = usePremium();
 
-  React.useEffect(() => {
-    (async () => {
-      try {
-        const res = await getProfile();
-        setProfile(res.user || res);
-      } catch (e) {
-        setError(e.message || 'Không lấy được hồ sơ');
-      }
-    })();
-  }, []);
+  // Refresh premium status và profile khi màn hình được focus
+  useFocusEffect(
+    React.useCallback(() => {
+      // Refresh premium status từ server để đảm bảo đồng bộ
+      refreshPremiumStatus();
+      // Load profile
+      (async () => {
+        try {
+          const res = await getProfile();
+          setProfile(res.user || res);
+          setError('');
+        } catch (e) {
+          setError(e.message || 'Không lấy được hồ sơ');
+        }
+      })();
+    }, [refreshPremiumStatus])
+  );
 
   const derivedAge = profile?.age ?? computeAge(profile?.birthDate);
 
   return (
     <SafeAreaView style={styles.container}>
-      <FixedHeader
-        extraRight={
-          <TouchableOpacity activeOpacity={0.9} style={styles.bellBtn} onPress={() => navigation.navigate('Notifications')}>
-            <Ionicons name="notifications-outline" size={18} color="#4D3B2C" />
-          </TouchableOpacity>
-        }
-      />
+      <FixedHeader />
       <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: 120 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 16, marginTop: 18, marginBottom: 12 }}>
           <Text style={[styles.sectionHeader, { marginHorizontal: 0, marginTop: 0, marginBottom: 0 }]}>Thông tin hồ sơ</Text>
@@ -157,7 +158,6 @@ const styles = StyleSheet.create({
   upgradeHint: { color: '#9C8F86' },
   upgradeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#F1CF82', paddingVertical: 12, borderRadius: 18, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
   upgradeText: { color: '#3C2C21', fontWeight: '900' },
-  bellBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.10, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
 });
 
 

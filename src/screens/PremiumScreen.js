@@ -11,13 +11,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export default function PremiumScreen({ navigation }) {
   const [loading, setLoading] = React.useState(false);
   const insets = useSafeAreaInsets();
-  const { setPremiumActive } = usePremium();
+  const { setPremiumActive, refreshPremiumStatus } = usePremium();
 
   const startTrial = async () => {
     if (loading) return; setLoading(true);
     try {
       const res = await createPaymentLink({ premiumPackageType: 'trial' });
       setPremiumActive(true);
+      // Refresh premium status từ server để đảm bảo đồng bộ
+      refreshPremiumStatus();
       alert(res?.message || 'Kích hoạt dùng thử thành công');
       navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
     } catch (e) {

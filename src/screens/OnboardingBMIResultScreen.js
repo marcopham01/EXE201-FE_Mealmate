@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { usePremium } from '../context/PremiumContext';
 
 function bmiLevel(bmi) {
   if (bmi < 18.5) return { label: 'Underweight', color: '#1E88E5' };
@@ -10,6 +11,13 @@ function bmiLevel(bmi) {
 
 export default function OnboardingBMIResultScreen({ route, navigation }) {
   const { goal, activity, height, weight, bmi } = route.params || {};
+  const { refreshPremiumStatus } = usePremium();
+  
+  // Refresh premium status sau khi tính BMI xong (đã thanh toán và nhập thông tin)
+  React.useEffect(() => {
+    refreshPremiumStatus();
+  }, [refreshPremiumStatus]);
+  
   const next = () => navigation.navigate('OnboardingGenerating', { goal, activity, height, weight, bmi });
   const lvl = bmiLevel(bmi);
 

@@ -1,14 +1,20 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { usePremium } from '../context/PremiumContext';
 
 export default function OnboardingGeneratingScreen({ route, navigation }) {
   const params = route.params || {};
+  const { refreshPremiumStatus } = usePremium();
+  
   React.useEffect(() => {
+    // Refresh premium status khi đang generate meal plan (đảm bảo status mới nhất)
+    refreshPremiumStatus();
+    
     const t = setTimeout(() => {
       navigation.replace('OnboardingPlanReady', params);
     }, 1200);
     return () => clearTimeout(t);
-  }, []);
+  }, [refreshPremiumStatus]);
 
   return (
     <View style={styles.container}>

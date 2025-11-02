@@ -24,14 +24,18 @@ export default function HomeScreen() {
   const weekLabels = ['T2','T3','T4','T5','T6','T7','CN'];
 
   const { selectedDayIdx, setSelectedDayIdx } = useWeek();
-  const { premiumActive } = usePremium();
+  const { premiumActive, refreshPremiumStatus } = usePremium();
 
   // Cập nhật theo thời gian thực khi quay lại màn hình
   useFocusEffect(React.useCallback(() => {
     const now = new Date();
     const idx = (now.getDay() + 6) % 7;
     setSelectedDayIdx(idx);
-  }, [setSelectedDayIdx]));
+    
+    // Refresh premium status khi quay lại HomeScreen để đảm bảo hiển thị đúng
+    // Đặc biệt quan trọng sau khi hoàn thành thanh toán và onboarding
+    refreshPremiumStatus();
+  }, [setSelectedDayIdx, refreshPremiumStatus]));
 
   const selectedDate = weekDates[selectedDayIdx];
   const dateStr = `${selectedDate.getDate()}/${selectedDate.getMonth()+1}/${selectedDate.getFullYear()}`;

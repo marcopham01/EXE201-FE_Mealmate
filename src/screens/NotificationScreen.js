@@ -51,13 +51,11 @@ export default function NotificationScreen({ navigation }) {
     setUnreadCount(0);
   };
 
-  useFocusEffect(
-    React.useCallback(() => {
-      // Cập nhật badge theo số lượng unread hiện tại
-      const count = items.filter((i) => i.unread).length;
-      setUnreadCount(count);
-    }, [items, setUnreadCount])
-  );
+  // Chỉ cập nhật unreadCount khi có thay đổi trong items (không refresh khi quay lại tab)
+  React.useEffect(() => {
+    const count = items.filter((i) => i.unread).length;
+    setUnreadCount(count);
+  }, [items, setUnreadCount]);
 
   return (
     <SafeAreaView style={styles.container}>

@@ -1,25 +1,40 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import FixedHeader from '../components/FixedHeader';
 import { usePremium } from '../context/PremiumContext';
+import { useSavedMeals } from '../context/SavedMealsContext';
 
 const TOP_TABS = ['Mới nhất', 'Thực đơn'];
 const MEAL_TABS = ['Sáng', 'Trưa', 'Tối'];
 
-function RecipeCard({ title, desc, time }) {
+function RecipeCard({ meal, mealTimeIndex, onBookmarkPress }) {
+  const { isMealSaved } = useSavedMeals();
+  const isSaved = isMealSaved(meal.id, mealTimeIndex);
+
   return (
     <TouchableOpacity activeOpacity={0.88} style={styles.recipeShadow}>
       <View style={styles.recipeCard}> 
         <View style={{ flex: 1, padding: 14 }}>
-          <Text style={styles.recipeTitle}>{title}</Text>
-          <Text style={styles.recipeDesc}>{desc}</Text>
-          <Text style={styles.recipeTime}>Thời gian: {time}</Text>
+          <Text style={styles.recipeTitle}>{meal.title}</Text>
+          <Text style={styles.recipeDesc}>{meal.desc}</Text>
+          <Text style={styles.recipeTime}>Thời gian: {meal.time}</Text>
         </View>
-        <View style={styles.recipeRight}> 
-          <Ionicons name="bookmark" size={18} color="#3C2C21" style={{ alignSelf: 'flex-end', margin: 10, opacity: 0.8 }} />
+        <View style={styles.recipeRight}>
+          <TouchableOpacity
+            onPress={() => onBookmarkPress && onBookmarkPress(meal)}
+            activeOpacity={0.7}
+            style={{ alignSelf: 'flex-end', margin: 10 }}
+          >
+            <Ionicons 
+              name={isSaved ? "bookmark" : "bookmark-outline"} 
+              size={18} 
+              color="#3C2C21" 
+              style={{ opacity: isSaved ? 1 : 0.8 }} 
+            />
+          </TouchableOpacity>
         </View>
       </View>
     </TouchableOpacity>
@@ -29,26 +44,54 @@ function RecipeCard({ title, desc, time }) {
 export default function RecipeScreen() {
   const navigation = useNavigation();
   const { premiumActive } = usePremium();
+  const { saveMeal, getSavedMealsByTime, determineMealTime } = useSavedMeals();
   const [activeTab, setActiveTab] = React.useState(0);
   const [activeMeal, setActiveMeal] = React.useState(0);
 
-  // Mock recipe data for UI
-  const recipesByMeal = React.useMemo(() => ({
-    0: [
-      { title: 'BÁNH MÌ TRỨNG\n+ PATE + RAU', desc: 'Bánh mì, trứng, pate, rau', time: '5 phút' },
-      { title: 'BÁNH MÌ TRỨNG\n+ PATE + RAU', desc: 'Bánh mì, trứng, pate, rau', time: '5 phút' },
-      { title: 'BÁNH MÌ TRỨNG\n+ PATE + RAU', desc: 'Bánh mì, trứng, pate, rau', time: '5 phút' },
-    ],
-    1: [
-      { title: 'CƠM GÀ NGŨ VỊ', desc: 'Cơm, ức gà, rau củ', time: '20 phút' },
-      { title: 'BÚN THỊT NƯỚNG', desc: 'Bún, thịt heo, rau sống', time: '25 phút' },
-    ],
-    2: [
-      { title: 'MÌ Ý SỐT CÀ', desc: 'Pasta, sốt cà, phô mai', time: '15 phút' },
-    ],
-  }), []);
+  // Load saved meals từ context
+  const savedMeals = React.useMemo(() => {
+    return getSavedMealsByTime(activeMeal);
+  }, [activeMeal, getSavedMealsByTime]);
 
-  const list = recipesByMeal[activeMeal] || [];
+  // Danh sách hiển thị: trong tab "Mới nhất" thì hiển thị saved meals, tab khác thì dùng mock data
+  const list = React.useMemo(() => {
+    if (activeTab === 0) {
+      // Tab "Mới nhất" - hiển thị saved meals
+      return savedMeals;
+    } else {
+      // Tab "Thực đơn" - dùng mock data (giữ nguyên logic cũ)
+      const mockData = {
+        0: [
+          { id: 'mock_1', title: 'BÁNH MÌ TRỨNG\n+ PATE + RAU', desc: 'Bánh mì, trứng, pate, rau', time: '5 phút' },
+          { id: 'mock_2', title: 'BÁNH MÌ TRỨNG\n+ PATE + RAU', desc: 'Bánh mì, trứng, pate, rau', time: '5 phút' },
+          { id: 'mock_3', title: 'BÁNH MÌ TRỨNG\n+ PATE + RAU', desc: 'Bánh mì, trứng, pate, rau', time: '5 phút' },
+        ],
+        1: [
+          { id: 'mock_4', title: 'CƠM GÀ NGŨ VỊ', desc: 'Cơm, ức gà, rau củ', time: '20 phút' },
+          { id: 'mock_5', title: 'BÚN THỊT NƯỚNG', desc: 'Bún, thịt heo, rau sống', time: '25 phút' },
+        ],
+        2: [
+          { id: 'mock_6', title: 'MÌ Ý SỐT CÀ', desc: 'Pasta, sốt cà, phô mai', time: '15 phút' },
+        ],
+      };
+      return mockData[activeMeal] || [];
+    }
+  }, [activeTab, activeMeal, savedMeals]);
+
+  // Xử lý khi bấm bookmark
+  const handleBookmarkPress = React.useCallback(async (meal) => {
+    try {
+      // Xác định buổi ăn từ meal hoặc dùng buổi hiện tại đang chọn
+      const mealTimeIndex = determineMealTime(meal) || activeMeal;
+      await saveMeal(meal, mealTimeIndex);
+      
+      // Có thể thêm feedback cho user (optional)
+      // Alert.alert('Thành công', 'Đã lưu món ăn vào danh sách');
+    } catch (error) {
+      console.error('Error saving meal:', error);
+      Alert.alert('Lỗi', 'Không thể lưu món ăn');
+    }
+  }, [saveMeal, determineMealTime, activeMeal]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
@@ -56,10 +99,14 @@ export default function RecipeScreen() {
       <View style={styles.body}>
         <View style={styles.softDivider} />
         {/* Search Bar */}
-        <View style={styles.searchWrap}>
+        <TouchableOpacity 
+          style={styles.searchWrap}
+          onPress={() => navigation.navigate('SearchRecipe')}
+          activeOpacity={0.8}
+        >
           <Ionicons name="search" size={20} color="#9F9A94" style={{ marginLeft: 10, marginRight: 6 }} />
-          <TextInput placeholder="Nhập nguyên liệu" placeholderTextColor="#B7B2AE" style={styles.input} />
-        </View>
+          <Text style={styles.searchPlaceholder}>Nhập nguyên liệu</Text>
+        </TouchableOpacity>
         {/* Top Tabs */}
         <View style={styles.tabRow}>
           {TOP_TABS.map((lbl, i) => (
@@ -93,10 +140,17 @@ export default function RecipeScreen() {
             {/* Recipe list */}
             <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 120 }}>
               {list.length === 0 ? (
-                <Text style={styles.emptyRecipe}>Chưa có công thức</Text>
+                <Text style={styles.emptyRecipe}>
+                  {activeTab === 0 ? 'Chưa có món ăn đã lưu' : 'Chưa có công thức'}
+                </Text>
               ) : (
-                list.map((r, idx) => (
-                  <RecipeCard key={idx} title={r.title} desc={r.desc} time={r.time} />
+                list.map((meal, idx) => (
+                  <RecipeCard 
+                    key={meal.id || idx} 
+                    meal={meal} 
+                    mealTimeIndex={activeMeal}
+                    onBookmarkPress={handleBookmarkPress}
+                  />
                 ))
               )}
             </ScrollView>
@@ -105,8 +159,13 @@ export default function RecipeScreen() {
           <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 120 }}>
             <Text style={{ fontWeight: '900', color: '#3C2C21', fontSize: 18, marginBottom: 10 }}>Thực đơn cá nhân</Text>
             <Text style={{ color: '#7D6E62', marginBottom: 12 }}>Tính năng soạn thực đơn sẽ hiển thị tại đây (đang phát triển nội dung chi tiết).</Text>
-            {list.map((r, idx) => (
-              <RecipeCard key={idx} title={r.title} desc={r.desc} time={r.time} />
+            {list.map((meal, idx) => (
+              <RecipeCard 
+                key={meal.id || idx} 
+                meal={meal} 
+                mealTimeIndex={activeMeal}
+                onBookmarkPress={handleBookmarkPress}
+              />
             ))}
           </ScrollView>
         ) : (
@@ -129,6 +188,7 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2,
   },
   input: { flex: 1, fontSize: 16, color: '#3C2C21', marginLeft: 6, paddingVertical: 4 },
+  searchPlaceholder: { flex: 1, fontSize: 16, color: '#B7B2AE', marginLeft: 6, paddingVertical: 4 },
   tabRow: {
     marginTop: 10, flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 20,
     borderBottomColor: '#F1E8DA', borderBottomWidth: 1, minHeight: 46,

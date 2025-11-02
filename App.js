@@ -6,6 +6,7 @@ import { WeekProvider } from './src/context/WeekContext';
 import { PremiumProvider } from './src/context/PremiumContext';
 import { NotificationProvider } from './src/context/NotificationContext';
 import { MealsProvider } from './src/context/MealsContext';
+import { SavedMealsProvider } from './src/context/SavedMealsContext';
 
 export default function App() {
   return (
@@ -14,9 +15,11 @@ export default function App() {
         <PremiumProvider>
           <NotificationProvider>
             <MealsProvider>
-              <NavigationContainer>
-                <AuthStack />
-              </NavigationContainer>
+              <SavedMealsProvider>
+                <NavigationContainer>
+                  <AuthStack />
+                </NavigationContainer>
+              </SavedMealsProvider>
             </MealsProvider>
           </NotificationProvider>
         </PremiumProvider>

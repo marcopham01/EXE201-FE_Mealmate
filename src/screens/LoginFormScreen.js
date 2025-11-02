@@ -5,13 +5,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { login } from '../api/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { usePremium } from '../context/PremiumContext';
 
 export default function LoginFormScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { refreshPremiumStatus } = usePremium();
   const [usernameState, setUsernameState] = React.useState('');
   const [passwordState, setPasswordState] = React.useState('');
   const [errors, setErrors] = React.useState({ username: '', password: '' });
   const [submitting, setSubmitting] = React.useState(false);
+  const [showPassword, setShowPassword] = React.useState(false);
   return (
     <SafeAreaView style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}> 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.card} keyboardShouldPersistTaps="handled">
@@ -34,7 +37,10 @@ export default function LoginFormScreen({ navigation }) {
         <Text style={styles.label}>Mật khẩu</Text>
         <View style={[styles.inputWrap, errors.password && { borderColor: '#D93025', borderWidth: 1 }] }>
           <Ionicons name="lock-closed-outline" size={18} color="#8D8580" />
-          <TextInput placeholder="123!@#" secureTextEntry style={styles.inputField} value={passwordState} onChangeText={(t)=>{ setPasswordState(t); if (errors.password) setErrors((e)=>({...e, password: ''})); }} />
+          <TextInput placeholder="123!@#" secureTextEntry={!showPassword} style={styles.inputField} value={passwordState} onChangeText={(t)=>{ setPasswordState(t); if (errors.password) setErrors((e)=>({...e, password: ''})); }} />
+          <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeButton}>
+            <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#8D8580" />
+          </TouchableOpacity>
         </View>
         {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
 
@@ -52,7 +58,11 @@ export default function LoginFormScreen({ navigation }) {
             try {
               setSubmitting(true);
               const res = await login({ username, password });
-              if (res?.accessToken) await AsyncStorage.setItem('accessToken', res.accessToken);
+              if (res?.accessToken) {
+                await AsyncStorage.setItem('accessToken', res.accessToken);
+                // Refresh premium status từ server sau khi đăng nhập thành công
+                refreshPremiumStatus();
+              }
               navigation.replace('Main');
             } catch (e) {
               const msg = (e?.message || '').toLowerCase();
@@ -103,6 +113,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   inputField: { flex: 1, paddingVertical: 10, paddingHorizontal: 2 },
+  eyeButton: { padding: 4, justifyContent: 'center', alignItems: 'center' },
   primaryBtn: { paddingVertical: 16, borderRadius: 28, alignItems: 'center', marginTop: 36, width: '100%', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
   primaryText: { fontWeight: '700', color: '#3C2C21' },
   errorText: { color: '#D16B6B', marginTop: 6, marginLeft: 6, fontSize: 12, fontWeight: '700' },

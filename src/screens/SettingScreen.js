@@ -46,6 +46,7 @@ export default function SettingScreen({ navigation }) {
           style={[styles.item, styles.logoutItem]}
           onPress={async () => {
             await AsyncStorage.removeItem('accessToken');
+            await AsyncStorage.removeItem('premiumActive');
             navigation.reset({ index: 0, routes: [{ name: 'LoginLanding' }] });
           }}
         >
