@@ -12,17 +12,33 @@ const Tab = createBottomTabNavigator();
 
 const CustomTabBar = ({ state, descriptors, navigation }) => {
   const items = [
-    { key: 'Journal', icon: 'book-outline', label: 'Nhật ký' },
-    { key: 'Analytics', icon: 'stats-chart-outline', label: 'Phân tích' },
-    { key: 'Camera', icon: 'camera', label: '' },
-    { key: 'Recipes', icon: 'restaurant-outline', label: 'Công thức' },
-    { key: 'Profile', icon: 'person-outline', label: 'Hồ sơ' },
+    { key: 'Journal', icon: 'book-outline', label: 'Nhật ký', routeName: 'Home' },
+    { key: 'Analytics', icon: 'stats-chart-outline', label: 'Phân tích', routeName: 'Analytics' },
+    { key: 'Camera', icon: 'camera', label: '', routeName: 'Camera' },
+    { key: 'Recipes', icon: 'restaurant-outline', label: 'Công thức', routeName: 'Recipes' },
+    { key: 'Profile', icon: 'person-outline', label: 'Hồ sơ', routeName: 'Profile' },
   ];
 
   const focusedRoute = state.routes[state.index]?.name;
   if (focusedRoute === 'Camera') {
     return null;
   }
+
+  // Hàm xử lý khi bấm vào tab
+  const handleTabPress = (routeName, isFocused) => {
+    if (routeName === 'Home' && isFocused) {
+      // Nếu đang ở Home và bấm lại tab "Nhật ký", refresh màn hình
+      const routeIndex = state.routes.findIndex(r => r.name === routeName);
+      const descriptor = descriptors[routeIndex];
+      if (descriptor?.navigation) {
+        // Emit focus event để trigger refresh trong HomeScreen
+        descriptor.navigation.emit('focus');
+      }
+      // Không navigate nếu đã đang ở màn hình đó, chỉ refresh
+      return;
+    }
+    navigation.navigate(routeName);
+  };
 
   return (
     <View style={{ position: 'absolute', left: 16, right: 16, bottom: 16 }}>
@@ -49,7 +65,7 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
           return (
             <TouchableOpacity
               key={it.key}
-              onPress={() => navigation.navigate(route.name)}
+              onPress={() => handleTabPress(route.name, isFocused)}
               style={{ flex: 1, alignItems: 'center' }}
             >
               <Ionicons name={it.icon} size={22} color={isFocused ? '#3C2C21' : '#B9A89F'} />
@@ -86,7 +102,7 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
           return (
             <TouchableOpacity
               key={it.key}
-              onPress={() => navigation.navigate(route.name)}
+              onPress={() => handleTabPress(route.name, isFocused)}
               style={{ flex: 1, alignItems: 'center' }}
             >
               <Ionicons name={it.icon} size={22} color={isFocused ? '#3C2C21' : '#B9A89F'} />
@@ -102,7 +118,17 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
 export default function BottomTabs() {
   return (
     <Tab.Navigator screenOptions={{ headerShown: false }} tabBar={(props) => <CustomTabBar {...props} /> }>
-      <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarStyle: { display: 'none' } }} />
+      <Tab.Screen 
+        name="Home" 
+        component={HomeScreen} 
+        options={{ tabBarStyle: { display: 'none' } }}
+        listeners={{
+          tabPress: (e) => {
+            // Khi bấm vào tab Home (Nhật ký), refresh màn hình
+            // useFocusEffect trong HomeScreen sẽ tự động được trigger
+          },
+        }}
+      />
       <Tab.Screen name="Analytics" component={AnalyzeScreen} />
       <Tab.Screen name="Camera" component={CameraCaptureScreen} />
       <Tab.Screen name="Recipes" component={RecipeScreen} />

@@ -23,6 +23,7 @@ import OnboardingBMIResultScreen from '../screens/OnboardingBMIResultScreen';
 import OnboardingGeneratingScreen from '../screens/OnboardingGeneratingScreen';
 import OnboardingPlanReadyScreen from '../screens/OnboardingPlanReadyScreen';
 import SearchRecipeScreen from '../screens/SearchRecipeScreen';
+import ChangePasswordScreen from '../screens/ChangePasswordScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -48,6 +49,7 @@ export default function AuthStack() {
       <Stack.Screen name="OnboardingGenerating" component={OnboardingGeneratingScreen} />
       <Stack.Screen name="OnboardingPlanReady" component={OnboardingPlanReadyScreen} />
       <Stack.Screen name="Settings" component={SettingScreen} />
+      <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <Stack.Screen name="Notifications" component={NotificationScreen} />
       {/* Camera analyze flow */}
       <Stack.Screen name="ConfirmPhoto" component={ConfirmPhotoScreen} />

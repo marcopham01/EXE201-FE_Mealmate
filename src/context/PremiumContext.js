@@ -67,7 +67,11 @@ export function PremiumProvider({ children }) {
       await AsyncStorage.setItem('premiumActive', finalStatus ? 'true' : 'false');
     } catch (error) {
       // Nếu lỗi (ví dụ: token hết hạn, không đăng nhập), set premium = false
-      console.warn('[PremiumContext] Error checking premium status:', error?.message);
+      const errorMsg = error?.message || '';
+      // Chỉ log warning nếu không phải lỗi token thông thường (chưa đăng nhập)
+      if (errorMsg && !errorMsg.toLowerCase().includes('invalid token') && !errorMsg.toLowerCase().includes('missing access token')) {
+        console.warn('[PremiumContext] Error checking premium status:', errorMsg);
+      }
       setPremiumActiveState(false);
       await AsyncStorage.removeItem('premiumActive');
     }
@@ -85,8 +89,9 @@ export function PremiumProvider({ children }) {
   };
 
   // Hàm refresh premium status từ server (export để có thể gọi từ bên ngoài)
-  const refreshPremiumStatus = React.useCallback(() => {
-    checkPremiumFromServer();
+  // Trả về Promise để có thể await được
+  const refreshPremiumStatus = React.useCallback(async () => {
+    return await checkPremiumFromServer();
   }, [checkPremiumFromServer]);
 
   return (

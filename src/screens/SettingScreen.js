@@ -1,11 +1,13 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { deleteAccount } from '../api/auth';
+import { useNotifications } from '../context/NotificationContext';
 
 export default function SettingScreen({ navigation }) {
+  const { notificationsEnabled, setNotificationsEnabled } = useNotifications();
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerRow}>
@@ -17,27 +19,26 @@ export default function SettingScreen({ navigation }) {
       </View>
 
       <View style={styles.section}>
-        <TouchableOpacity activeOpacity={0.88} style={styles.item}>
+        <View style={styles.item}>
           <View style={styles.itemLeft}>
             <Ionicons name="notifications-outline" size={20} color="#5A3E2B" style={{ width: 22 }} />
             <Text style={styles.itemLabel}>Thông báo</Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color="#9C8F86" />
-        </TouchableOpacity>
-        <TouchableOpacity activeOpacity={0.88} style={styles.item} onPress={() => navigation.navigate('LoginForm') /* tạm thời dẫn đến đổi mật khẩu sau */}>
+          <Switch
+            value={!!notificationsEnabled}
+            onValueChange={(v) => setNotificationsEnabled(v)}
+            thumbColor={notificationsEnabled ? '#F1CF82' : '#E0E0E0'}
+            trackColor={{ false: '#CFC7BF', true: '#F6E6B3' }}
+          />
+        </View>
+        <TouchableOpacity activeOpacity={0.88} style={styles.item} onPress={() => navigation.navigate('ChangePassword')}>
           <View style={styles.itemLeft}>
             <Ionicons name="lock-closed-outline" size={20} color="#5A3E2B" style={{ width: 22 }} />
             <Text style={styles.itemLabel}>Mật khẩu</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#9C8F86" />
         </TouchableOpacity>
-        <TouchableOpacity activeOpacity={0.88} style={styles.item}>
-          <View style={styles.itemLeft}>
-            <MaterialCommunityIcons name="palette-outline" size={20} color="#5A3E2B" style={{ width: 22 }} />
-            <Text style={styles.itemLabel}>Chủ đề</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#9C8F86" />
-        </TouchableOpacity>
+        {/* Chủ đề: tạm thời bỏ chức năng */}
       </View>
 
       <View style={styles.section}>

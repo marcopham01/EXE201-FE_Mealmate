@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
-import { getPaymentHistory, verifyPayment } from '../api/payment';
+import { getPaymentHistory, verifyPayment, normalizeIsPaid } from '../api/payment';
 import { getProfile } from '../api/auth';
 import { usePremium } from '../context/PremiumContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -52,23 +52,7 @@ export default function PaymentWebScreen({ route, navigation }) {
       console.log('[PaymentCheck] Start check', { orderCode: String(orderCode) });
       console.log('[PaymentCheck] Token available', { hasToken: !!tk, tokenPreview: tk ? String(tk).slice(0, 8) + '***' : null });
 
-      const normalizeIsPaid = (r) => {
-        if (!r) return false;
-        const candidates = [r.status, r.payment_status, r.state, r.transaction_status, r.status_text];
-        const joined = candidates.map((v) => (typeof v === 'string' ? v.toLowerCase() : '')).join('|');
-        if (
-          joined.includes('paid') ||
-          joined.includes('success') ||
-          joined.includes('succeeded') ||
-          joined.includes('completed') ||
-          joined.includes('complete')
-        ) {
-          return true;
-        }
-        if (r.is_paid === true || r.paid === true) return true;
-        if (`${r.status}` === '1' || `${r.payment_status}` === '1') return true;
-        return false;
-      };
+      // Sử dụng normalizeIsPaid từ payment.js
 
       const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
@@ -102,7 +86,7 @@ export default function PaymentWebScreen({ route, navigation }) {
         console.log('[PaymentCheck] Fetch history attempt', attempt + 1);
         let res = null;
         try {
-          res = await getPaymentHistory(tk);
+          res = await getPaymentHistory({ limit: 50 }, tk);
         } catch (err) {
           console.warn('[PaymentCheck] getPaymentHistory error', {
             attempt: attempt + 1,

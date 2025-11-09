@@ -11,7 +11,7 @@ import { getLatestMealPlan } from '../api/meals';
 
 export default function AnalyzeScreen() {
   const navigation = useNavigation();
-  const { premiumActive } = usePremium();
+  const { premiumActive, refreshPremiumStatus } = usePremium();
   const [mealPlan, setMealPlan] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   
@@ -35,27 +35,34 @@ export default function AnalyzeScreen() {
       const idx = (now.getDay() + 6) % 7;
       setSelectedDayIdx(idx);
       
+      // Refresh premium status khi quay lại AnalyzeScreen
+      // Đặc biệt quan trọng sau khi hoàn thành thanh toán và onboarding
+      refreshPremiumStatus();
+      
       // Fetch meal plan
       const fetchMealPlan = async () => {
-        if (premiumActive) {
-          setLoading(true);
-          try {
-            const plan = await getLatestMealPlan();
-            setMealPlan(plan);
-          } catch (error) {
-            console.error('Error fetching meal plan:', error);
-            setMealPlan(null);
-          } finally {
-            setLoading(false);
-          }
-        } else {
+        // Sau khi refresh, kiểm tra lại premiumActive từ context
+        // Note: premiumActive có thể chưa cập nhật ngay sau refresh
+        // nên chúng ta sẽ dựa vào kết quả từ API meal plan
+        try {
+          const plan = await getLatestMealPlan();
+          setMealPlan(plan);
+          setLoading(false);
+        } catch (error) {
+          console.error('Error fetching meal plan:', error);
           setMealPlan(null);
           setLoading(false);
         }
       };
       
-      fetchMealPlan();
-    }, [premiumActive, setSelectedDayIdx])
+      if (premiumActive) {
+        setLoading(true);
+        fetchMealPlan();
+      } else {
+        setMealPlan(null);
+        setLoading(false);
+      }
+    }, [premiumActive, setSelectedDayIdx, refreshPremiumStatus])
   );
 
   // Tính calories cho từng ngày trong tuần dựa trên meal plan

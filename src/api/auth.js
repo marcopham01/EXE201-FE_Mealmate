@@ -20,7 +20,7 @@ const host = Platform.select({
   default: IOS_SIMULATOR_HOST,
 });
 
-export const BASE_URL = ENV_BASE || `http://${host}:${PORT}/api`;
+export const BASE_URL = ENV_BASE || `https://exe-be-v4pd.onrender.com/api`;
 
 async function handleJson(response) {
   const text = await response.text();
@@ -52,13 +52,73 @@ export async function register(payload) {
 }
 
 export async function getProfile() {
-  const token = await AsyncStorage.getItem('accessToken');
-  if (!token) throw new Error('Missing access token');
-  const res = await fetch(`${BASE_URL}/users/getprofile`, {
-    method: 'GET',
-    headers: { 'Authorization': `Bearer ${token}` },
+  return callWithAutoRefresh(async () => {
+    const token = await AsyncStorage.getItem('accessToken');
+    if (!token) throw new Error('Missing access token');
+    const res = await fetch(`${BASE_URL}/users/getprofile`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return handleJson(res);
   });
-  return handleJson(res);
+}
+
+
+export async function refreshTokens() {
+  const storedRefresh = await AsyncStorage.getItem('refreshToken');
+  if (!storedRefresh) {
+    throw new Error('No refresh token available');
+  }
+  const body = { refreshToken: storedRefresh };
+  const res = await fetch(`${BASE_URL}/users/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await handleJson(res);
+  if (data?.accessToken) {
+    await AsyncStorage.setItem('accessToken', data.accessToken);
+  }
+  if (data?.refreshToken) {
+    await AsyncStorage.setItem('refreshToken', data.refreshToken);
+  }
+  return data;
+}
+
+/**
+ * Helper function để tự động refresh token khi gặp 401 error
+ * @param {Function} apiCall - Function gọi API cần retry
+ * @returns {Promise} Kết quả từ API call
+ */
+export async function callWithAutoRefresh(apiCall) {
+  try {
+    return await apiCall();
+  } catch (error) {
+    // Kiểm tra nếu là lỗi 401 (Unauthorized) - token hết hạn
+    // Check trong message hoặc status code
+    const errorMessage = error.message || '';
+    const isUnauthorized = errorMessage.includes('401') || 
+                          errorMessage.includes('Unauthorized') ||
+                          errorMessage.toLowerCase().includes('token expired') ||
+                          errorMessage.toLowerCase().includes('invalid token') ||
+                          errorMessage.toLowerCase().includes('missing access token');
+    
+    if (isUnauthorized) {
+      try {
+        // Thử refresh token
+        await refreshTokens();
+        // Retry API call với token mới
+        return await apiCall();
+      } catch (refreshError) {
+        // Nếu refresh token thất bại, xóa tokens và throw error
+        await AsyncStorage.removeItem('accessToken');
+        await AsyncStorage.removeItem('refreshToken');
+        throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      }
+    }
+    // Nếu không phải lỗi 401, throw error gốc
+    throw error;
+  }
 }
 
 

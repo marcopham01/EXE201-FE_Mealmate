@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Image, TextInput, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Image, TextInput, TouchableOpacity, Dimensions, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,27 @@ export default function ConfirmPhotoScreen() {
   const route = useRoute();
   const { uri } = route.params || {};
   const [note, setNote] = useState('');
+  const [imageError, setImageError] = useState(false);
+
+  // Debug: Log params
+  React.useEffect(() => {
+    console.log('[ConfirmPhoto] Route params:', route.params);
+    console.log('[ConfirmPhoto] URI:', uri);
+    if (!uri) {
+      console.warn('[ConfirmPhoto] No URI provided in route params!');
+    }
+  }, [uri, route.params]);
+
+  // Normalize URI - đảm bảo file:// URI được xử lý đúng
+  const imageUri = React.useMemo(() => {
+    if (!uri) return null;
+    // Nếu URI đã có file:// thì giữ nguyên, nếu không thì thêm
+    if (uri.startsWith('file://') || uri.startsWith('http://') || uri.startsWith('https://')) {
+      return uri;
+    }
+    // Nếu là path tương đối, thêm file://
+    return `file://${uri}`;
+  }, [uri]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -24,10 +45,50 @@ export default function ConfirmPhotoScreen() {
         <Text style={styles.title}>Xác nhận ảnh của bạn?</Text>
         <View style={styles.previewContainer}>
           <View style={styles.previewCard}>
-            {uri ? (
-              <Image source={{ uri }} style={styles.previewImg} resizeMode="cover" />
+            {imageUri ? (
+              <Image
+                key={imageUri}
+                source={{ uri: imageUri }}
+                style={styles.previewImg}
+                resizeMode="cover"
+                fadeDuration={0}
+                onError={(e) => {
+                  const error = e?.nativeEvent?.error || e;
+                  console.error('[ConfirmPhoto] Image load error:', error);
+                  console.error('[ConfirmPhoto] Failed URI:', imageUri);
+                  console.error('[ConfirmPhoto] Error details:', JSON.stringify(e?.nativeEvent || {}));
+                  setImageError(true);
+                }}
+                onLoad={(e) => {
+                  console.log('[ConfirmPhoto] Image loaded successfully:', imageUri);
+                  console.log('[ConfirmPhoto] Image dimensions:', {
+                    width: e?.nativeEvent?.source?.width,
+                    height: e?.nativeEvent?.source?.height,
+                  });
+                  console.log('[ConfirmPhoto] Image style applied:', styles.previewImg);
+                  setImageError(false);
+                }}
+                onLoadStart={() => {
+                  console.log('[ConfirmPhoto] Image loading started:', imageUri);
+                  setImageError(false);
+                }}
+                onLoadEnd={() => {
+                  console.log('[ConfirmPhoto] Image load ended:', imageUri);
+                }}
+              />
             ) : (
-              <View style={styles.previewPlaceholder} />
+              <View style={styles.previewPlaceholder}>
+                {imageError ? (
+                  <View style={styles.errorContainer}>
+                    <Ionicons name="image-outline" size={48} color="#9F9892" />
+                    <Text style={styles.errorText}>Không thể tải ảnh</Text>
+                  </View>
+                ) : (
+                  <View style={styles.loadingContainer}>
+                    <Text style={styles.loadingText}>Đang tải ảnh...</Text>
+                  </View>
+                )}
+              </View>
             )}
           </View>
         </View>
@@ -76,21 +137,51 @@ const styles = StyleSheet.create({
   },
   previewCard: {
     width: width - 48,
-    aspectRatio: 1,
+    height: width - 48,
     borderRadius: 28,
     overflow: 'hidden',
-    backgroundColor: '#EFD79F',
+    backgroundColor: '#000000',
     shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   previewImg: { 
-    width: '100%', 
-    height: '100%',
+    width: width - 48,
+    height: width - 48,
+    borderRadius: 28,
+    backgroundColor: 'transparent',
   },
-  previewPlaceholder: { flex: 1, backgroundColor: '#EFD79F' },
+  previewPlaceholder: { 
+    flex: 1, 
+    backgroundColor: '#EFD79F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: '#7D6E62',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorText: {
+    color: '#9F9892',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 8,
+  },
   inputContainer: {
     marginTop: 16,
     marginBottom: 24,

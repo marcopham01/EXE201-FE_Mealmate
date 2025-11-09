@@ -4,6 +4,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 export default function CameraCaptureScreen() {
   const cameraRef = useRef(null);
@@ -46,20 +47,57 @@ export default function CameraCaptureScreen() {
   }, [isFocused, cameraReady, permission]);
 
   const openGallery = async () => {
-    setMode('library');
-    const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!granted) {
-      Alert.alert('Quyền bị từ chối', 'Cần quyền thư viện ảnh để chọn hình.');
-      setMode('quick');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-    if (!result.canceled && result.assets?.[0]?.uri) {
-      navigation.replace('ConfirmPhoto', { uri: result.assets[0].uri });
-    } else {
+    try {
+      // Yêu cầu quyền truy cập thư viện ảnh
+      const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!granted) {
+        Alert.alert(
+          'Quyền bị từ chối',
+          'Cần quyền thư viện ảnh để chọn hình. Vui lòng cấp quyền trong Cài đặt.',
+          [
+            { text: 'Hủy', style: 'cancel' },
+            { text: 'Mở cài đặt', onPress: () => Linking.openSettings() }
+          ]
+        );
+        return;
+      }
+
+      // Mở thư viện ảnh
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: false,
+        quality: 0.9,
+      });
+
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        const selectedUri = result.assets[0].uri;
+        
+        // Xử lý ảnh tương tự như khi chụp: resize và compress
+        try {
+          const actions = [];
+          // Giới hạn chiều rộng để giảm dung lượng và tránh vấn đề render
+          actions.push({ resize: { width: 1600 } });
+          const manipulated = await ImageManipulator.manipulateAsync(
+            selectedUri,
+            actions,
+            {
+              compress: 0.9,
+              format: ImageManipulator.SaveFormat.JPEG
+            }
+          );
+          const finalUri = manipulated?.uri || selectedUri;
+          navigation.replace('ConfirmPhoto', { uri: finalUri });
+        } catch (manipulateError) {
+          console.warn('Image manipulation error:', manipulateError);
+          // Nếu xử lý ảnh thất bại, vẫn dùng ảnh gốc
+          navigation.replace('ConfirmPhoto', { uri: selectedUri });
+        }
+      } else {
+        // Người dùng hủy chọn ảnh, quay lại mode quick
+        setMode('quick');
+      }
+    } catch (error) {
+      console.error('Open gallery error:', error);
+      Alert.alert('Lỗi', 'Không thể mở thư viện ảnh. Vui lòng thử lại.');
       setMode('quick');
     }
   };
@@ -67,12 +105,39 @@ export default function CameraCaptureScreen() {
   const takePicture = async () => {
     if (cameraRef.current && cameraReady) {
       try {
-        const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
+        // Chụp ảnh với format JPEG thay vì PNG để tương thích tốt hơn
+        const photo = await cameraRef.current.takePictureAsync({ 
+          quality: 0.9, 
+          skipProcessing: false,
+          imageType: 'jpg' // Đổi từ 'png' sang 'jpg'
+        });
         if (photo?.uri) {
-          navigation.replace('ConfirmPhoto', { uri: photo.uri });
+          // Xử lý ảnh tương tự như khi chọn từ gallery
+          try {
+            const actions = [];
+            // Giới hạn chiều rộng để giảm dung lượng và tránh vấn đề render
+            actions.push({ resize: { width: 1600 } });
+            const manipulated = await ImageManipulator.manipulateAsync(
+              photo.uri, 
+              actions, 
+              { 
+                compress: 0.9, 
+                format: ImageManipulator.SaveFormat.JPEG 
+              }
+            );
+            const finalUri = manipulated?.uri || photo.uri;
+            console.log('[Camera] Final URI after manipulation:', finalUri);
+            navigation.replace('ConfirmPhoto', { uri: finalUri });
+          } catch (manipulateError) {
+            console.warn('[Camera] Image manipulation error:', manipulateError);
+            // Nếu xử lý ảnh thất bại, vẫn dùng ảnh gốc
+            console.log('[Camera] Using original URI:', photo.uri);
+            navigation.replace('ConfirmPhoto', { uri: photo.uri });
+          }
         }
       } catch (err) {
-        console.warn('Take picture error:', err);
+        console.error('[Camera] Take picture error:', err);
+        Alert.alert('Lỗi', 'Không thể chụp ảnh. Vui lòng thử lại.');
       }
     }
   };

@@ -1,11 +1,12 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import FixedHeader from '../components/FixedHeader';
 import { usePremium } from '../context/PremiumContext';
 import { useSavedMeals } from '../context/SavedMealsContext';
+import { getAllMeals } from '../api/meals';
 
 const TOP_TABS = ['Mới nhất', 'Thực đơn'];
 const MEAL_TABS = ['Sáng', 'Trưa', 'Tối'];
@@ -43,53 +44,112 @@ function RecipeCard({ meal, mealTimeIndex, onBookmarkPress }) {
 
 export default function RecipeScreen() {
   const navigation = useNavigation();
-  const { premiumActive } = usePremium();
+  const { premiumActive, refreshPremiumStatus } = usePremium();
   const { saveMeal, getSavedMealsByTime, determineMealTime } = useSavedMeals();
   const [activeTab, setActiveTab] = React.useState(0);
   const [activeMeal, setActiveMeal] = React.useState(0);
+  const [refreshKey, setRefreshKey] = React.useState(0); // Key để force re-render RecipeCard
+  const [mealsFromAPI, setMealsFromAPI] = React.useState([]); // Meals từ API
+  const [loadingMeals, setLoadingMeals] = React.useState(false); // Loading state
+
+  // Map từ activeMeal index sang mealTime string
+  const mealTimeMap = {
+    0: 'breakfast', // Sáng
+    1: 'lunch',     // Trưa
+    2: 'dinner',    // Tối
+  };
+
+  // Refresh premium status khi quay lại RecipeScreen
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshPremiumStatus();
+    }, [refreshPremiumStatus])
+  );
+
+  // Load meals từ API
+  const loadMealsFromAPI = React.useCallback(async () => {
+    if (!premiumActive) return;
+    
+    setLoadingMeals(true);
+    try {
+      let allMeals = [];
+      let currentPage = 1;
+      const limit = 50;
+      let hasMore = true;
+      
+      // Lấy tất cả meals với pagination
+      while (hasMore && allMeals.length < 200) {
+        try {
+          const result = await getAllMeals({ page: currentPage, limit });
+          if (result && result.data && Array.isArray(result.data)) {
+            allMeals = [...allMeals, ...result.data];
+            hasMore = result.pagination?.hasNextPage || false;
+            currentPage++;
+          } else {
+            hasMore = false;
+          }
+        } catch (error) {
+          console.error('Error fetching meals page:', error);
+          hasMore = false;
+        }
+      }
+      
+      setMealsFromAPI(allMeals);
+    } catch (error) {
+      console.error('Error loading meals from API:', error);
+      setMealsFromAPI([]);
+    } finally {
+      setLoadingMeals(false);
+    }
+  }, [premiumActive]);
+
+  // Load meals khi chuyển sang tab "Thực đơn" và user là premium
+  React.useEffect(() => {
+    if (activeTab === 1 && premiumActive && mealsFromAPI.length === 0) {
+      loadMealsFromAPI();
+    }
+  }, [activeTab, premiumActive, loadMealsFromAPI, mealsFromAPI.length]);
 
   // Load saved meals từ context
   const savedMeals = React.useMemo(() => {
     return getSavedMealsByTime(activeMeal);
   }, [activeMeal, getSavedMealsByTime]);
 
-  // Danh sách hiển thị: trong tab "Mới nhất" thì hiển thị saved meals, tab khác thì dùng mock data
+  // Danh sách hiển thị: tab "Mới nhất" hiển thị saved meals, tab "Thực đơn" hiển thị meals từ API
   const list = React.useMemo(() => {
     if (activeTab === 0) {
       // Tab "Mới nhất" - hiển thị saved meals
       return savedMeals;
     } else {
-      // Tab "Thực đơn" - dùng mock data (giữ nguyên logic cũ)
-      const mockData = {
-        0: [
-          { id: 'mock_1', title: 'BÁNH MÌ TRỨNG\n+ PATE + RAU', desc: 'Bánh mì, trứng, pate, rau', time: '5 phút' },
-          { id: 'mock_2', title: 'BÁNH MÌ TRỨNG\n+ PATE + RAU', desc: 'Bánh mì, trứng, pate, rau', time: '5 phút' },
-          { id: 'mock_3', title: 'BÁNH MÌ TRỨNG\n+ PATE + RAU', desc: 'Bánh mì, trứng, pate, rau', time: '5 phút' },
-        ],
-        1: [
-          { id: 'mock_4', title: 'CƠM GÀ NGŨ VỊ', desc: 'Cơm, ức gà, rau củ', time: '20 phút' },
-          { id: 'mock_5', title: 'BÚN THỊT NƯỚNG', desc: 'Bún, thịt heo, rau sống', time: '25 phút' },
-        ],
-        2: [
-          { id: 'mock_6', title: 'MÌ Ý SỐT CÀ', desc: 'Pasta, sốt cà, phô mai', time: '15 phút' },
-        ],
-      };
-      return mockData[activeMeal] || [];
+      // Tab "Thực đơn" - lấy meals từ API và filter theo mealTime
+      const currentMealTime = mealTimeMap[activeMeal];
+      if (!currentMealTime) return [];
+      
+      // Filter meals có mealTime tương ứng với buổi đang chọn
+      return mealsFromAPI.filter(meal => {
+        const mealTimes = meal.mealTime || [];
+        return mealTimes.includes(currentMealTime);
+      });
     }
-  }, [activeTab, activeMeal, savedMeals]);
+  }, [activeTab, activeMeal, savedMeals, mealsFromAPI]);
 
-  // Xử lý khi bấm bookmark
+  // Xử lý khi bấm bookmark (toggle save/unsave)
   const handleBookmarkPress = React.useCallback(async (meal) => {
     try {
-      // Xác định buổi ăn từ meal hoặc dùng buổi hiện tại đang chọn
-      const mealTimeIndex = determineMealTime(meal) || activeMeal;
+      // Xác định buổi ăn từ mealTime trong database
+      // Nếu meal không có mealTime hoặc không xác định được, dùng buổi hiện tại đang chọn
+      const mealTimeFromDB = determineMealTime(meal);
+      const mealTimeIndex = mealTimeFromDB !== null ? mealTimeFromDB : activeMeal;
       await saveMeal(meal, mealTimeIndex);
       
-      // Có thể thêm feedback cho user (optional)
-      // Alert.alert('Thành công', 'Đã lưu món ăn vào danh sách');
+      // Force refresh bằng cách tăng refreshKey để trigger re-render RecipeCard
+      // Điều này đảm bảo UI cập nhật ngay lập tức sau khi lưu/xóa
+      setRefreshKey(prev => prev + 1);
+      
+      // Không hiển thị thông báo để tránh spam, UI sẽ tự động cập nhật icon bookmark
     } catch (error) {
       console.error('Error saving meal:', error);
-      Alert.alert('Lỗi', 'Không thể lưu món ăn');
+      Alert.alert('Lỗi', 'Không thể lưu/hủy lưu món ăn');
     }
   }, [saveMeal, determineMealTime, activeMeal]);
 
@@ -146,7 +206,7 @@ export default function RecipeScreen() {
               ) : (
                 list.map((meal, idx) => (
                   <RecipeCard 
-                    key={meal.id || idx} 
+                    key={`${meal.id || idx}-${refreshKey}`} 
                     meal={meal} 
                     mealTimeIndex={activeMeal}
                     onBookmarkPress={handleBookmarkPress}
@@ -156,18 +216,40 @@ export default function RecipeScreen() {
             </ScrollView>
           </>
         ) : premiumActive ? (
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 120 }}>
-            <Text style={{ fontWeight: '900', color: '#3C2C21', fontSize: 18, marginBottom: 10 }}>Thực đơn cá nhân</Text>
-            <Text style={{ color: '#7D6E62', marginBottom: 12 }}>Tính năng soạn thực đơn sẽ hiển thị tại đây (đang phát triển nội dung chi tiết).</Text>
-            {list.map((meal, idx) => (
-              <RecipeCard 
-                key={meal.id || idx} 
-                meal={meal} 
-                mealTimeIndex={activeMeal}
-                onBookmarkPress={handleBookmarkPress}
-              />
-            ))}
-          </ScrollView>
+          <>
+            {/* Sub meal tab (Sáng/Trưa/Tối) cho tab Thực đơn */}
+            <View style={styles.mealTabRow}>
+              {MEAL_TABS.map((lbl, i) => (
+                <TouchableOpacity
+                  key={lbl}
+                  style={[styles.mealTabBtn, activeMeal === i && styles.mealTabBtnActive]}
+                  onPress={() => setActiveMeal(i)}
+                  activeOpacity={0.78}>
+                  <Text style={[styles.mealTabLabel, activeMeal === i && styles.mealTabLabelActive]}>{lbl}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 120 }}>
+              {loadingMeals ? (
+                <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
+                  <ActivityIndicator size="large" color="#FAE2AF" />
+                  <Text style={{ marginTop: 12, color: '#7D6E62' }}>Đang tải công thức...</Text>
+                </View>
+              ) : list.length === 0 ? (
+                <Text style={styles.emptyRecipe}>Chưa có công thức cho buổi {MEAL_TABS[activeMeal]}</Text>
+              ) : (
+                list.map((meal, idx) => (
+                  <RecipeCard 
+                    key={`${meal.id || idx}-${refreshKey}`} 
+                    meal={meal} 
+                    mealTimeIndex={activeMeal}
+                    onBookmarkPress={handleBookmarkPress}
+                  />
+                ))
+              )}
+            </ScrollView>
+          </>
         ) : (
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
             <MaterialCommunityIcons name="crown" size={72} color="#A9A29C" style={{ marginBottom: 24 }} />

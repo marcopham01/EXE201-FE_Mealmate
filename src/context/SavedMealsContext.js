@@ -84,7 +84,7 @@ export function SavedMealsProvider({ children }) {
       if (existingIndex >= 0) {
         // Nếu đã tồn tại, xóa khỏi danh sách (toggle off)
         wasAdded = false;
-        newMeals[`mealTimeKey`] = newMeals[mealTimeKey].filter(m => m.id !== meal.id);
+        newMeals[mealTimeKey] = newMeals[mealTimeKey].filter(m => m.id !== meal.id);
       } else {
         // Nếu chưa tồn tại, thêm vào đầu danh sách (toggle on)
         wasAdded = true;
@@ -153,19 +153,25 @@ export function SavedMealsProvider({ children }) {
   }, [savedMeals]);
 
   /**
-   * Xác định buổi ăn từ meal object (nếu có mealTime trong meal)
-   * Nếu không có, để user chọn hoặc mặc định là lunch
+   * Xác định buổi ăn từ meal object dựa trên mealTime từ database
+   * Ưu tiên: breakfast -> lunch -> dinner
+   * Nếu không có mealTime, trả về null để dùng buổi hiện tại đang chọn
    */
   const determineMealTime = useCallback((meal) => {
-    // Nếu meal có mealTime property
+    // Nếu meal có mealTime property từ database
     if (meal.mealTime && Array.isArray(meal.mealTime) && meal.mealTime.length > 0) {
-      const time = meal.mealTime[0]; // Lấy buổi đầu tiên nếu có nhiều
+      // Ưu tiên theo thứ tự: breakfast -> lunch -> dinner
+      if (meal.mealTime.includes('breakfast')) return 0; // Sáng
+      if (meal.mealTime.includes('lunch')) return 1; // Trưa
+      if (meal.mealTime.includes('dinner')) return 2; // Tối
+      // Nếu có mealTime nhưng không match, lấy buổi đầu tiên
+      const time = meal.mealTime[0];
       if (time === 'breakfast') return 0;
       if (time === 'lunch') return 1;
       if (time === 'dinner') return 2;
     }
-    // Mặc định là trưa (lunch)
-    return 1;
+    // Nếu không có mealTime, trả về null để dùng buổi hiện tại đang chọn
+    return null;
   }, []);
 
   const value = {

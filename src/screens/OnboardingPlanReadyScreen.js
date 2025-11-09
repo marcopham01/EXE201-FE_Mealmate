@@ -25,8 +25,7 @@ export default function OnboardingPlanReadyScreen({ navigation }) {
         <Row left="Tổng lượng calo" right="2.409 Cal" first />
         <Row left="Bữa sáng" right="481 Cal" />
         <Row left="Bữa trưa" right="843 Cal" />
-        <Row left="Bữa tối" right="602 Cal" />
-        <Row left="Bữa phụ" right="481 Cal" last />
+        <Row left="Bữa tối" right="602 Cal" last />
       </View>
       <TouchableOpacity style={styles.btn} onPress={handleConfirm}>
         <Text style={styles.btnText}>Xác nhận</Text>

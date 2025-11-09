@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { register as registerApi } from '../api/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { pushLocalNotification } from '../utils/notifications';
 
 function pad(n){return n<10?`0${n}`:`${n}`}
 
@@ -108,12 +109,30 @@ export default function RegisterScreen({ navigation }) {
         <Text style={styles.label}>Tên đăng nhập</Text>
         <View style={styles.inputWrap}>
           <Ionicons name="person-outline" size={18} color="#8D8580" />
-          <TextInput placeholder="abc" style={styles.inputField} value={username} onChangeText={setUsername} autoCapitalize="none" />
+          <TextInput 
+            placeholder="abc" 
+            style={styles.inputField} 
+            value={username} 
+            onChangeText={setUsername} 
+            autoCapitalize="none"
+            autoCorrect={true}
+            keyboardType="default"
+            returnKeyType="next"
+          />
         </View>
         <Text style={styles.label}>Họ và tên</Text>
         <View style={styles.inputWrap}>
           <Ionicons name="id-card-outline" size={18} color="#8D8580" />
-          <TextInput placeholder="Nguyễn Văn A" style={styles.inputField} value={fullName} onChangeText={setFullName} />
+          <TextInput 
+            placeholder="Nguyễn Văn A" 
+            style={styles.inputField} 
+            value={fullName} 
+            onChangeText={setFullName}
+            autoCapitalize="words"
+            autoCorrect={true}
+            keyboardType="default"
+            returnKeyType="next"
+          />
         </View>
         <Text style={styles.label}>Email</Text>
         <View style={styles.inputWrap}>
@@ -168,6 +187,8 @@ export default function RegisterScreen({ navigation }) {
               if (!username || !fullName || !email || !password || !birthDate || !job) { alert('Vui lòng nhập đầy đủ thông tin bắt buộc'); return; }
               if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) { alert('Ngày sinh phải theo định dạng YYYY-MM-DD'); return; }
               await registerApi({ username, password, phoneNumber, email, fullName, gender, birthDate, job });
+              // Push cục bộ: tạo tài khoản thành công
+              pushLocalNotification({ title: 'Tạo tài khoản thành công', body: `Chào mừng ${fullName || username} đến MealMate!` });
               alert('Đăng ký thành công. Vui lòng đăng nhập');
               navigation.reset({ index: 0, routes: [{ name: 'LoginForm' }] });
             } catch (e) {

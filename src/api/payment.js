@@ -1,21 +1,22 @@
 import { BASE_URL } from './auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Hàm helper để lấy auth headers
 async function authHeaders(optionalToken) {
   const token = optionalToken || (await AsyncStorage.getItem('accessToken'));
   if (!token) throw new Error('Chưa đăng nhập');
   return { 'Authorization': `Bearer ${token}` };
 }
 
-export async function createPaymentLink({ premiumPackageType }) {
-  const headers = await authHeaders();
-  const res = await fetch(`${BASE_URL}/payment/create`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify({ premium_package_type: premiumPackageType }),
-  });
+// Hàm helper để parse response JSON
+async function parseResponse(res) {
   const text = await res.text();
-  let data = null; try { data = text ? JSON.parse(text) : null; } catch {}
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
   if (!res.ok) {
     const message = (data && (data.message || data.error)) || `HTTP ${res.status}`;
     throw new Error(message);
@@ -23,80 +24,172 @@ export async function createPaymentLink({ premiumPackageType }) {
   return data;
 }
 
-export async function getPaymentHistory(optionalToken) {
-  const headers = await authHeaders(optionalToken);
-  // Thêm tham số chống cache để tránh 304/If-None-Match
-  const ts = Date.now();
-  const base = `${BASE_URL}/payment/history`;
-  const url = `${base}?limit=50&_ts=${ts}`; // lấy nhiều hơn đề phòng phân trang chưa tới
-  const commonHeaders = { 'Cache-Control': 'no-cache', Pragma: 'no-cache', ...headers };
-
-  let res = await fetch(url, { headers: commonHeaders });
-  // Nếu server vẫn trả 304 do ETag, thử lại 1 lần với ts khác
-  if (res.status === 304) {
-    res = await fetch(`${base}?limit=50&_ts=${Date.now() + 1}`, { headers: commonHeaders });
-  }
-  const text = await res.text();
-  let data = null; try { data = text ? JSON.parse(text) : null; } catch {}
-  if (!res.ok) {
-    const message = (data && (data.message || data.error)) || `HTTP ${res.status}`;
-    throw new Error(message);
-  }
-  return data; // paginated response
+/**
+ * Tạo đơn thanh toán premium (PayOS)
+ * @param {Object} params - Tham số tạo đơn
+ * @param {string} params.premiumPackageType - Loại gói: "monthly" hoặc "yearly"
+ * @param {number} [params.amount] - Số tiền (tùy chọn, backend có thể tự tính)
+ * @returns {Promise<Object>} Response chứa payment_id, order_code, checkout_url, qr_code, etc.
+ */
+export async function createPaymentLink({ premiumPackageType, amount = 0 }) {
+  const headers = await authHeaders();
+  const res = await fetch(`${BASE_URL}/payment/create`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify({
+      amount: amount,
+      premium_package_type: premiumPackageType,
+    }),
+  });
+  return await parseResponse(res);
 }
 
-export async function verifyPayment({ orderCode }, optionalToken) {
+/**
+ * Lấy lịch sử giao dịch premium của user hiện tại
+ * @param {Object} [options] - Tùy chọn query
+ * @param {number} [options.page=1] - Trang hiện tại
+ * @param {number} [options.limit=10] - Số lượng mỗi trang
+ * @param {string} [options.status] - Lọc theo status: "pending", "paid", "cancelled", "failed"
+ * @param {string} [optionalToken] - Token tùy chọn (nếu không dùng token từ AsyncStorage)
+ * @returns {Promise<Object>} Response chứa data array và pagination info
+ */
+export async function getPaymentHistory(options = {}, optionalToken) {
   const headers = await authHeaders(optionalToken);
-  const commonHeaders = { 'Cache-Control': 'no-cache', Pragma: 'no-cache', ...headers };
-
-  const normalizeIsPaid = (r) => {
-    if (!r) return false;
-    const candidates = [r.status, r.payment_status, r.state, r.transaction_status, r.status_text];
-    const joined = candidates.map((v) => (typeof v === 'string' ? v.toLowerCase() : '')).join('|');
-    if (
-      joined.includes('paid') ||
-      joined.includes('success') ||
-      joined.includes('succeeded') ||
-      joined.includes('completed') ||
-      joined.includes('complete')
-    ) return true;
-    if (r.is_paid === true || r.paid === true) return true;
-    if (`${r.status}` === '1' || `${r.payment_status}` === '1') return true;
-    return false;
+  const { page = 1, limit = 10, status } = options;
+  
+  // Xây dựng query params
+  const params = new URLSearchParams();
+  params.append('page', String(page));
+  params.append('limit', String(limit));
+  if (status) {
+    params.append('status', status);
+  }
+  // Thêm timestamp để tránh cache
+  params.append('_ts', String(Date.now()));
+  
+  const url = `${BASE_URL}/payment/history?${params.toString()}`;
+  const commonHeaders = {
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
+    ...headers,
   };
+  
+  let res = await fetch(url, { headers: commonHeaders });
+  // Nếu server trả 304 (Not Modified), thử lại với timestamp khác
+  if (res.status === 304) {
+    params.set('_ts', String(Date.now() + 1));
+    res = await fetch(`${BASE_URL}/payment/history?${params.toString()}`, { headers: commonHeaders });
+  }
+  
+  return await parseResponse(res);
+}
 
-  // 1) Thử endpoint verify
+/**
+ * Cập nhật trạng thái thanh toán
+ * @param {Object} params - Tham số cập nhật
+ * @param {number} params.orderCode - Mã đơn hàng
+ * @param {string} params.status - Trạng thái: "pending", "paid", "cancelled", "failed"
+ * @param {string} [optionalToken] - Token tùy chọn
+ * @returns {Promise<Object>} Response chứa payment info đã cập nhật
+ */
+export async function updatePaymentStatus({ orderCode, status }, optionalToken) {
+  const headers = await authHeaders(optionalToken);
+  const res = await fetch(`${BASE_URL}/payment/update-status`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify({
+      order_code: orderCode,
+      status: status,
+    }),
+  });
+  return await parseResponse(res);
+}
+
+/**
+ * Kiểm tra trạng thái thanh toán bằng cách query lịch sử giao dịch
+ * @param {Object} params - Tham số kiểm tra
+ * @param {number} params.orderCode - Mã đơn hàng cần kiểm tra
+ * @param {string} [optionalToken] - Token tùy chọn
+ * @returns {Promise<Object|null>} Payment info nếu tìm thấy, null nếu không
+ */
+export async function verifyPayment({ orderCode }, optionalToken) {
   try {
-    const ts1 = Date.now();
-    const base1 = `${BASE_URL}/payment/verify`;
-    const q1 = new URLSearchParams({ order_code: String(orderCode || ''), orderCode: String(orderCode || ''), _ts: String(ts1) });
-    let res1 = await fetch(`${base1}?${q1.toString()}`, { method: 'GET', headers: commonHeaders });
-    if (res1.status === 304) {
-      const q1b = new URLSearchParams({ order_code: String(orderCode || ''), orderCode: String(orderCode || ''), _ts: String(Date.now() + 1) });
-      res1 = await fetch(`${base1}?${q1b.toString()}`, { method: 'GET', headers: commonHeaders });
+    // Lấy lịch sử giao dịch và tìm order_code tương ứng
+    const history = await getPaymentHistory({ limit: 50 }, optionalToken);
+    
+    // Hỗ trợ nhiều cấu trúc response khác nhau
+    const itemsRaw = history?.data || history?.items || history?.results || 
+                     history?.data?.items || history?.data?.results || 
+                     history?.data?.data || history?.transactions || 
+                     history?.data?.transactions || history?.docs || 
+                     history?.data?.docs || [];
+    
+    const items = Array.isArray(itemsRaw) ? itemsRaw : [];
+    
+    // Tìm payment theo order_code
+    const found = items.find((item) => {
+      const code = item?.order_code || item?.orderCode;
+      return String(code) === String(orderCode);
+    });
+    
+    if (found) {
+      return found;
     }
-    const t1 = await res1.text();
-    let d1 = null; try { d1 = t1 ? JSON.parse(t1) : null; } catch {}
-    if (res1.ok) {
-      // Nếu đã paid thì trả luôn, nếu chưa thì tiếp tục thử endpoint success
-      if (normalizeIsPaid(d1)) return d1;
-    }
-  } catch (_) { /* ignore and fallback */ }
+    
+    return null;
+  } catch (error) {
+    console.warn('[verifyPayment] Error:', error.message);
+    throw error;
+  }
+}
 
-  // 2) Fallback: endpoint success như log BE cung cấp
-  const ts2 = Date.now();
-  const base2 = `${BASE_URL}/payment/success`;
-  const q2 = new URLSearchParams({ order_code: String(orderCode || ''), orderCode: String(orderCode || ''), cancel: 'false', _ts: String(ts2) });
-  let res2 = await fetch(`${base2}?${q2.toString()}`, { method: 'GET', headers: commonHeaders });
-  if (res2.status === 304) {
-    const q2b = new URLSearchParams({ order_code: String(orderCode || ''), orderCode: String(orderCode || ''), cancel: 'false', _ts: String(Date.now() + 1) });
-    res2 = await fetch(`${base2}?${q2b.toString()}`, { method: 'GET', headers: commonHeaders });
+/**
+ * Helper function để normalize trạng thái paid
+ * @param {Object} payment - Payment object
+ * @returns {boolean} true nếu đã paid
+ */
+export function normalizeIsPaid(payment) {
+  if (!payment) return false;
+  
+  // Kiểm tra các trường status có thể có
+  const candidates = [
+    payment.status,
+    payment.payment_status,
+    payment.state,
+    payment.transaction_status,
+    payment.status_text,
+  ];
+  
+  const joined = candidates
+    .map((v) => (typeof v === 'string' ? v.toLowerCase() : ''))
+    .join('|');
+  
+  // Kiểm tra các từ khóa paid
+  if (
+    joined.includes('paid') ||
+    joined.includes('success') ||
+    joined.includes('succeeded') ||
+    joined.includes('completed') ||
+    joined.includes('complete')
+  ) {
+    return true;
   }
-  const t2 = await res2.text();
-  let d2 = null; try { d2 = t2 ? JSON.parse(t2) : null; } catch {}
-  if (!res2.ok) {
-    const message = (d2 && (d2.message || d2.error)) || `HTTP ${res2.status}`;
-    throw new Error(message);
+  
+  // Kiểm tra boolean flags
+  if (payment.is_paid === true || payment.paid === true) {
+    return true;
   }
-  return d2; // kỳ vọng chứa status=PAID khi thành công
+  
+  // Kiểm tra numeric status (1 = paid)
+  if (String(payment.status) === '1' || String(payment.payment_status) === '1') {
+    return true;
+  }
+  
+  return false;
 }

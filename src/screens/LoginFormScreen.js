@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { login } from '../api/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { pushLocalNotification } from '../utils/notifications';
 import { usePremium } from '../context/PremiumContext';
 
 export default function LoginFormScreen({ navigation }) {
@@ -31,7 +32,16 @@ export default function LoginFormScreen({ navigation }) {
         <Text style={styles.label}>Tên đăng nhập</Text>
         <View style={[styles.inputWrap, errors.username && { borderColor: '#D93025', borderWidth: 1 }] }>
           <Ionicons name="person-outline" size={18} color="#8D8580" />
-          <TextInput placeholder="username" style={styles.inputField} value={usernameState} onChangeText={(t)=>{ setUsernameState(t); if (errors.username) setErrors((e)=>({...e, username: ''})); }} autoCapitalize="none" />
+          <TextInput 
+            placeholder="username" 
+            style={styles.inputField} 
+            value={usernameState} 
+            onChangeText={(t)=>{ setUsernameState(t); if (errors.username) setErrors((e)=>({...e, username: ''})); }} 
+            autoCapitalize="none"
+            autoCorrect={true}
+            keyboardType="default"
+            returnKeyType="next"
+          />
         </View>
         {errors.username ? <Text style={styles.errorText}>{errors.username}</Text> : null}
         <Text style={styles.label}>Mật khẩu</Text>
@@ -60,9 +70,14 @@ export default function LoginFormScreen({ navigation }) {
               const res = await login({ username, password });
               if (res?.accessToken) {
                 await AsyncStorage.setItem('accessToken', res.accessToken);
-                // Refresh premium status từ server sau khi đăng nhập thành công
-                refreshPremiumStatus();
               }
+              if (res?.refreshToken) {
+                await AsyncStorage.setItem('refreshToken', res.refreshToken);
+              }
+              // Refresh premium status từ server sau khi đăng nhập thành công
+              refreshPremiumStatus();
+              // Thông báo cục bộ (hardcode FE)
+              pushLocalNotification({ title: 'Đăng nhập thành công', body: `Chào mừng ${username}!` });
               navigation.replace('Main');
             } catch (e) {
               const msg = (e?.message || '').toLowerCase();

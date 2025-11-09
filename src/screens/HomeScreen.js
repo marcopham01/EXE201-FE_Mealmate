@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import FixedHeader from '../components/FixedHeader';
@@ -26,7 +26,8 @@ export default function HomeScreen() {
   const { selectedDayIdx, setSelectedDayIdx } = useWeek();
   const { premiumActive, refreshPremiumStatus } = usePremium();
 
-  // Cập nhật theo thời gian thực khi quay lại màn hình
+  // Cập nhật theo thời gian thực khi quay lại màn hình hoặc khi bấm vào tab "Nhật ký"
+  // useFocusEffect sẽ tự động trigger khi màn hình được focus (bao gồm khi bấm vào tab)
   useFocusEffect(React.useCallback(() => {
     const now = new Date();
     const idx = (now.getDay() + 6) % 7;
@@ -34,6 +35,7 @@ export default function HomeScreen() {
     
     // Refresh premium status khi quay lại HomeScreen để đảm bảo hiển thị đúng
     // Đặc biệt quan trọng sau khi hoàn thành thanh toán và onboarding
+    // Cũng refresh khi bấm vào tab "Nhật ký" (sẽ trigger focus event từ BottomTabs)
     refreshPremiumStatus();
   }, [setSelectedDayIdx, refreshPremiumStatus]));
 
@@ -52,6 +54,7 @@ export default function HomeScreen() {
           <MaterialCommunityIcons name="silverware-fork-knife" size={18} color="#5A5A5A" />
           <Text style={styles.sectionDateText}>{`Bữa ăn vào ${dateStr}`}</Text>
         </View>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>BỮA SÁNG</Text>
           <View style={styles.mealCardShadow}>
@@ -62,10 +65,12 @@ export default function HomeScreen() {
                   <Text style={{ color: '#8D8074', marginTop: 4 }}>{meals.breakfast.desc}</Text>
                 </View>
               ) : (
-                <View style={styles.mealAdd}> 
-                  <Ionicons name="add-circle-outline" size={40} color="#D1CBC6" />
-                  <Text style={styles.mealAddText}>CHỌN MÓN ĂN</Text>
-                </View>
+                <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.9} onPress={() => navigation.navigate('Recipes', { mealType: 'breakfast', date: selectedDate.toISOString() })}>
+                  <View style={styles.mealAdd}> 
+                    <MaterialCommunityIcons name="plus-circle-outline" size={40} color="#D1CBC6" />
+                    <Text style={styles.mealAddText}>CHỌN MÓN ĂN</Text>
+                  </View>
+                </TouchableOpacity>
               )}
             </View>
           </View>
@@ -80,10 +85,12 @@ export default function HomeScreen() {
                   <Text style={{ color: '#8D8074', marginTop: 4 }}>{meals.lunch.desc}</Text>
                 </View>
               ) : (
-                <View style={styles.mealAdd}> 
-                  <Ionicons name="add-circle-outline" size={40} color="#D1CBC6" />
-                  <Text style={styles.mealAddText}>CHỌN MÓN ĂN</Text>
-                </View>
+                <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.9} onPress={() => navigation.navigate('Recipes', { mealType: 'lunch', date: selectedDate.toISOString() })}>
+                  <View style={styles.mealAdd}> 
+                    <MaterialCommunityIcons name="plus-circle-outline" size={40} color="#D1CBC6" />
+                    <Text style={styles.mealAddText}>CHỌN MÓN ĂN</Text>
+                  </View>
+                </TouchableOpacity>
               )}
             </View>
           </View>
@@ -98,15 +105,17 @@ export default function HomeScreen() {
                   <Text style={{ color: '#8D8074', marginTop: 4 }}>{meals.dinner.desc}</Text>
                 </View>
               ) : (
-                <View style={styles.mealAdd}> 
-                  <Ionicons name="add-circle-outline" size={40} color="#D1CBC6" />
-                  <Text style={styles.mealAddText}>CHỌN MÓN ĂN</Text>
-                </View>
+                <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.9} onPress={() => navigation.navigate('Recipes', { mealType: 'dinner', date: selectedDate.toISOString() })}>
+                  <View style={styles.mealAdd}> 
+                    <MaterialCommunityIcons name="plus-circle-outline" size={40} color="#D1CBC6" />
+                    <Text style={styles.mealAddText}>CHỌN MÓN ĂN</Text>
+                  </View>
+                </TouchableOpacity>
               )}
             </View>
           </View>
         </View>
-        <View style={{ height: 96 }} />
+        </ScrollView>
       </View>
     </SafeAreaView>
   );

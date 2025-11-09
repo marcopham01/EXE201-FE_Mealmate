@@ -7,6 +7,7 @@ import { createPaymentLink } from '../api/payment';
 import { useNavigation } from '@react-navigation/native';
 import { usePremium } from '../context/PremiumContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { pushLocalNotification } from '../utils/notifications';
 
 export default function PremiumScreen({ navigation }) {
   const [loading, setLoading] = React.useState(false);
@@ -20,6 +21,8 @@ export default function PremiumScreen({ navigation }) {
       setPremiumActive(true);
       // Refresh premium status từ server để đảm bảo đồng bộ
       refreshPremiumStatus();
+      // Push cục bộ: dùng thử thành công
+      pushLocalNotification({ title: 'Gói cao cấp', body: 'Kích hoạt dùng thử thành công!' });
       alert(res?.message || 'Kích hoạt dùng thử thành công');
       navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
     } catch (e) {
