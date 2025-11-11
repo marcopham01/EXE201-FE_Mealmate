@@ -24,6 +24,8 @@ import OnboardingGeneratingScreen from '../screens/OnboardingGeneratingScreen';
 import OnboardingPlanReadyScreen from '../screens/OnboardingPlanReadyScreen';
 import SearchRecipeScreen from '../screens/SearchRecipeScreen';
 import ChangePasswordScreen from '../screens/ChangePasswordScreen';
+import DetailsMealScreen from '../screens/DetailsMealScreen';
+import WeeklyMealPlanScreen from '../screens/WeeklyMealPlanScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -57,6 +59,10 @@ export default function AuthStack() {
       <Stack.Screen name="AnalyzeResult" component={AnalyzeResultScreen} />
       {/* Recipe search */}
       <Stack.Screen name="SearchRecipe" component={SearchRecipeScreen} />
+      {/* Meal details */}
+      <Stack.Screen name="MealDetails" component={DetailsMealScreen} />
+      {/* Weekly meal plan */}
+      <Stack.Screen name="WeeklyMealPlan" component={WeeklyMealPlanScreen} />
     </Stack.Navigator>
   );
 }

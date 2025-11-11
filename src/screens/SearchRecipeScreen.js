@@ -407,8 +407,8 @@ const styles = StyleSheet.create({
   },
   resultsContainer: {
     flex: 1,
-    marginTop: 16,
-    paddingBottom: 100, // Để không bị che bởi footer buttons
+    marginTop: 12,
+    paddingBottom: 48, // Thu nhỏ khoảng trắng với footer
   },
   resultsScroll: {
     flex: 1,
@@ -454,17 +454,17 @@ const styles = StyleSheet.create({
   },
   footer: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10, // Thu gọn chiều cao footer
     backgroundColor: '#F6F6FA',
     borderTopWidth: 1,
     borderTopColor: '#EEE9E2',
-    gap: 12,
+    gap: 10,
   },
   resetButton: {
     flex: 1,
     borderRadius: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#3C2C21', // Border nâu đậm
@@ -479,7 +479,7 @@ const styles = StyleSheet.create({
   confirmButton: {
     flex: 1,
     borderRadius: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     backgroundColor: '#FAE2AF', // Nền vàng nhạt
     alignItems: 'center',
     justifyContent: 'center',

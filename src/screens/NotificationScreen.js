@@ -63,6 +63,7 @@ export default function NotificationScreen({ navigation }) {
   const inFlightRef = React.useRef(false);
   const lastFetchAtRef = React.useRef(0);
   const isInitialMountRef = React.useRef(true);
+  const totalItemsRef = React.useRef(Number.MAX_SAFE_INTEGER);
 
   const formatTimeAgo = (iso) => {
     try {
@@ -99,7 +100,8 @@ export default function NotificationScreen({ navigation }) {
       return;
     }
     const now = Date.now();
-    if (now - lastFetchAtRef.current < 500) {
+    // Tăng thời gian debounce lên 1000ms để tránh multiple calls
+    if (now - lastFetchAtRef.current < 1000) {
       console.debug('[NotificationScreen] skip fetch (too soon)');
       return;
     }
@@ -117,18 +119,16 @@ export default function NotificationScreen({ navigation }) {
       const data = Array.isArray(res?.data) ? res.data : [];
       const mapped = data.map(mapApiItem);
       const total = res?.pagination?.total ?? Number.MAX_SAFE_INTEGER;
+      totalItemsRef.current = total;
       
       // Batch update để tránh multiple re-renders
+      // Không gọi setState khác trong setItems callback - sẽ update sau bằng useEffect
       setItems((prev) => {
         const next = replace ? mapped : [...prev, ...mapped];
-        const hasMoreData = mapped.length > 0 && next.length < total;
-        setHasMore(hasMoreData);
-        // Update unread count một lần duy nhất
-        const unreadCount = computeUnreadCount(next);
-        setUnreadCount(unreadCount);
-        console.debug('[NotificationScreen] merged items', { prevLen: prev.length, add: mapped.length, nextLen: next.length, total, hasMore: hasMoreData });
+        console.debug('[NotificationScreen] merged items', { prevLen: prev.length, add: mapped.length, nextLen: next.length, total });
         return next;
       });
+      
       setPage(nextPage);
     } catch (e) {
       console.warn('[NotificationScreen] fetchPage error', e?.message);
@@ -140,11 +140,17 @@ export default function NotificationScreen({ navigation }) {
       setLoading(false); 
       inFlightRef.current = false; 
     }
-  }, [limit, unreadOnly, setUnreadCount, computeUnreadCount]);
+  }, [limit, unreadOnly]);
 
   const refreshList = React.useCallback(async () => {
-    // Chặn refresh nếu đang fetch
+    // Chặn refresh nếu đang fetch hoặc vừa mới fetch
     if (inFlightRef.current) {
+      console.debug('[NotificationScreen] skip refresh (in-flight)');
+      return;
+    }
+    const now = Date.now();
+    if (now - lastFetchAtRef.current < 1000) {
+      console.debug('[NotificationScreen] skip refresh (too soon)');
       return;
     }
     setRefreshing(true);
@@ -222,19 +228,24 @@ export default function NotificationScreen({ navigation }) {
     
     // Chỉ fetch một lần khi focus lần đầu, không fetch lại nếu đã có data
     // Điều này đảm bảo không bị chập chờn do multiple fetches
-    if (!fetchedOnFocusRef.current) {
+    if (!fetchedOnFocusRef.current && items.length === 0 && !inFlightRef.current) {
       fetchedOnFocusRef.current = true;
-      // Chỉ fetch nếu chưa có data hoặc data rỗng
-      if (items.length === 0) {
-        refreshList();
-      }
+      refreshList();
     }
     
     return () => {
       // Reset khi blur để lần sau focus lại có thể fetch nếu cần
       fetchedOnFocusRef.current = false;
     };
-  }, [notificationsEnabled, refreshList]));
+  }, [notificationsEnabled, items.length, refreshList]));
+
+  // Update unreadCount và hasMore khi items thay đổi
+  React.useEffect(() => {
+    const unreadCount = computeUnreadCount(items);
+    setUnreadCount(unreadCount);
+    const hasMoreData = items.length > 0 && items.length < totalItemsRef.current;
+    setHasMore(hasMoreData);
+  }, [items, computeUnreadCount, setUnreadCount]);
 
   // Khi chuyển chip lọc, tự động refresh - chỉ một lần
   React.useEffect(() => {

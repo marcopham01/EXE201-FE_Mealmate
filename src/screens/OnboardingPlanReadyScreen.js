@@ -2,8 +2,16 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { usePremium } from '../context/PremiumContext';
 
-export default function OnboardingPlanReadyScreen({ navigation }) {
+export default function OnboardingPlanReadyScreen({ navigation, route }) {
   const { refreshPremiumStatus } = usePremium();
+  const params = route?.params || {};
+
+  const calorieTarget = Number(params.calorieTarget) || 2409;
+  const breakfast = Number(params.breakdown?.breakfast) || 481;
+  const lunch = Number(params.breakdown?.lunch) || 843;
+  const dinner = Number(params.breakdown?.dinner) || 602;
+
+  const fmt = (n) => `${n.toLocaleString('vi-VN')} Cal`;
   
   // Refresh premium status khi meal plan đã sẵn sàng (hoàn thành onboarding)
   React.useEffect(() => {
@@ -11,21 +19,26 @@ export default function OnboardingPlanReadyScreen({ navigation }) {
   }, [refreshPremiumStatus]);
   
   const handleConfirm = async () => {
-    // Refresh lại một lần nữa trước khi về Main để đảm bảo premium status được cập nhật
-    // Đợi refresh hoàn tất để đảm bảo HomeScreen hiển thị đúng trạng thái premium
+    // Refresh lại một lần nữa trước khi về Analytics để đảm bảo premium status được cập nhật
     await refreshPremiumStatus();
-    // Navigate về Main (HomeScreen) - HomeScreen sẽ tự động refresh khi focus
-    navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
+    // Navigate về Main và chuyển đến tab Analytics (AnalyzeScreen)
+    navigation.reset({ 
+      index: 0, 
+      routes: [{ 
+        name: 'Main', 
+        params: { screen: 'Analytics' } 
+      }] 
+    });
   };
   
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Kế hoạch bữa ăn cá nhân của bạn đã sẵn sàng</Text>
       <View style={styles.card}>
-        <Row left="Tổng lượng calo" right="2.409 Cal" first />
-        <Row left="Bữa sáng" right="481 Cal" />
-        <Row left="Bữa trưa" right="843 Cal" />
-        <Row left="Bữa tối" right="602 Cal" last />
+        <Row left="Tổng lượng calo" right={fmt(calorieTarget)} first />
+        <Row left="Bữa sáng" right={fmt(breakfast)} />
+        <Row left="Bữa trưa" right={fmt(lunch)} />
+        <Row left="Bữa tối" right={fmt(dinner)} last />
       </View>
       <TouchableOpacity style={styles.btn} onPress={handleConfirm}>
         <Text style={styles.btnText}>Xác nhận</Text>

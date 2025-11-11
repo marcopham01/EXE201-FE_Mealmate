@@ -607,3 +607,91 @@ export async function getMealPlanHistory({ page = 1, limit = 10 } = {}) {
     return null;
   }
 }
+
+/**
+ * Gợi ý thực đơn theo BMI cho user hiện tại
+ * @param {Object} body
+ * @param {number} body.heightCm
+ * @param {number} body.weightKg
+ * @param {string} body.activityLevel
+ * @param {string} body.goal
+ * @returns {Promise<Object|null>} Response data từ server
+ */
+export async function recommendMealsByBMI(body) {
+  try {
+    const headers = await getAuthHeaders();
+    const url = `${BASE_URL}/meal/recommendation/bmi`;
+
+    // Sanitize payload to fit backend constraints
+    const normalize = (s) =>
+      (s || '')
+        .toString()
+        .replace(/\u00A0/g, ' ')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[‘’'“”]/g, '')
+        .replace(/\s+/g, ' ');
+
+    // Normalize activityLevel để match với backend (backend check trong allowedLevels với keys không dấu)
+    const activityInput = body?.activityLevel || '';
+    const lvNorm = normalize(activityInput).trim(); // Đảm bảo trim để loại bỏ khoảng trắng thừa
+    
+    // Gửi format không dấu trực tiếp để match với backend allowedLevels keys
+    // Backend keys: "it van dong", "van dong vua phai", "van dong nhieu"
+    let activityLevel = 'van dong vua phai'; // default (không dấu)
+    
+    // Check chính xác với normalized value
+    if (lvNorm === 'it van dong') {
+      activityLevel = 'it van dong';
+    } else if (lvNorm === 'van dong nhieu') {
+      activityLevel = 'van dong nhieu';
+    } else if (lvNorm === 'van dong vua phai') {
+      activityLevel = 'van dong vua phai';
+    } else {
+      // Fallback: check với includes nếu không match chính xác
+      if (lvNorm.includes('it van dong')) {
+        activityLevel = 'it van dong';
+      } else if (lvNorm.includes('van dong nhieu')) {
+        activityLevel = 'van dong nhieu';
+      } else if (lvNorm.includes('van dong vua phai')) {
+        activityLevel = 'van dong vua phai';
+      } else {
+        // Log để debug nếu không match
+        console.warn('[recommendMealsByBMI] Unknown activityLevel:', activityInput, 'normalized:', lvNorm);
+      }
+    }
+
+    const goalNorm = normalize(body?.goal);
+    let goal = 'Duy trì cân nặng';
+    if (goalNorm.includes('giam')) goal = 'Giảm cân';
+    else if (goalNorm.includes('tang')) goal = 'Tăng cân';
+
+    const payload = {
+      heightCm: Number(body?.heightCm),
+      weightKg: Number(body?.weightKg),
+      activityLevel,
+      goal,
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      // Tránh log lỗi đỏ gây khó chịu; chỉ warning và trả null để UI fallback
+      console.warn('recommendMealsByBMI HTTP error:', response.status, text);
+      return null;
+    }
+
+    const result = await handleJson(response);
+    return result?.data || null;
+  } catch (error) {
+    console.warn('Error calling recommendMealsByBMI:', error?.message || error);
+    return null;
+  }
+}

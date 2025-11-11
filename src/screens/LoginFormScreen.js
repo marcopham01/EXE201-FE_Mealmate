@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +18,16 @@ export default function LoginFormScreen({ navigation }) {
   const [showPassword, setShowPassword] = React.useState(false);
   return (
     <SafeAreaView style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}> 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.card} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 40}
+      >
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.card}
+          keyboardShouldPersistTaps="handled"
+        >
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color="#1F1F1F" />
         </TouchableOpacity>
@@ -93,7 +102,8 @@ export default function LoginFormScreen({ navigation }) {
             <Text style={styles.primaryText}>{submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}</Text>
           </LinearGradient>
         </TouchableOpacity>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -103,7 +113,7 @@ const styles = StyleSheet.create({
   card: {
     paddingHorizontal: 20,
     paddingTop: 24,
-    paddingBottom: 24,
+    paddingBottom: 60,
     alignItems: 'stretch',
   },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginTop: -8, alignSelf: 'flex-start' },
