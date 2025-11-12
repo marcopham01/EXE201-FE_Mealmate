@@ -79,7 +79,8 @@ export default function RecipeScreen() {
   // Khởi tạo tab bữa ăn theo mealType từ route (nếu có)
   const paramsInit = route?.params || {};
   const initialMealIdx = paramsInit.mealType === 'lunch' ? 1 : paramsInit.mealType === 'dinner' ? 2 : 0;
-  const [activeTab, setActiveTab] = React.useState(0);
+  const initialTab = paramsInit.initialTab !== undefined ? paramsInit.initialTab : 0;
+  const [activeTab, setActiveTab] = React.useState(initialTab);
   const [activeMeal, setActiveMeal] = React.useState(initialMealIdx);
   const [refreshKey, setRefreshKey] = React.useState(0); // Key để force re-render RecipeCard
   const [mealsFromAPI, setMealsFromAPI] = React.useState([]); // Meals từ API

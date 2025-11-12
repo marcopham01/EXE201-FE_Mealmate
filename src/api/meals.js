@@ -695,3 +695,87 @@ export async function recommendMealsByBMI(body) {
     return null;
   }
 }
+
+/**
+ * Phân tích nguyên liệu từ ảnh sử dụng AI (Gemini)
+ * @param {Object} params - Tham số
+ * @param {string} params.imageUri - URI của ảnh (file:// hoặc http://)
+ * @param {string} params.userId - ID của user (optional, có thể lấy từ token)
+ * @param {number} params.heightCm - Chiều cao (cm)
+ * @param {number} params.weightKg - Cân nặng (kg)
+ * @param {number} params.bmi - BMI
+ * @returns {Promise<Object|null>} Kết quả phân tích với danh sách nguyên liệu và gợi ý món ăn
+ */
+export async function analyzeIngredientsFromImage({ imageUri, userId, heightCm, weightKg, bmi }) {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    if (!token) {
+      throw new Error('Missing access token');
+    }
+
+    // Tạo FormData để gửi multipart/form-data
+    const formData = new FormData();
+    
+    // Thêm ảnh vào formData
+    // Xử lý URI: nếu là file:// thì cần convert sang format phù hợp
+    const imageFile = {
+      uri: imageUri,
+      type: 'image/jpeg', // Hoặc 'image/png' tùy vào format ảnh
+      name: 'image.jpg', // Tên file
+    };
+    formData.append('image', imageFile);
+    
+    // Thêm các tham số khác nếu có
+    if (userId) {
+      formData.append('userId', userId);
+    }
+    if (heightCm !== undefined && heightCm !== null) {
+      formData.append('heightCm', heightCm.toString());
+    }
+    if (weightKg !== undefined && weightKg !== null) {
+      formData.append('weightKg', weightKg.toString());
+    }
+    if (bmi !== undefined && bmi !== null) {
+      formData.append('bmi', bmi.toString());
+    }
+
+    const url = `${BASE_URL}/ai/ingredients-from-image`;
+    
+    console.log('[analyzeIngredientsFromImage] Calling API:', url);
+    console.log('[analyzeIngredientsFromImage] Params:', { userId, heightCm, weightKg, bmi });
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        // Không set Content-Type, để browser tự động set với boundary cho multipart/form-data
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[analyzeIngredientsFromImage] HTTP error:', response.status, errorText);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    const result = await handleJson(response);
+    console.log('[analyzeIngredientsFromImage] Success:', result);
+    
+    // Backend trả về trực tiếp: { success, ingredientsDetected, matchedIngredients, meals }
+    // Không wrap trong data
+    if (result && result.success !== false) {
+      return {
+        ingredientsDetected: result.ingredientsDetected || [],
+        matchedIngredients: result.matchedIngredients || [],
+        meals: result.meals || [],
+        note: result.note || null,
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('[analyzeIngredientsFromImage] Error:', error?.message || error);
+    throw error;
+  }
+}
