@@ -53,8 +53,13 @@ export default function PremiumScreen({ navigation }) {
         <View style={styles.overlay} />
       </ImageBackground>
 
-      <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.closeBtn, { top: insets.top + 8 }]} accessibilityLabel="Đóng">
-        <Ionicons name="close" size={34} color="#FFFFFF" />
+      <TouchableOpacity 
+        onPress={() => navigation.goBack()} 
+        activeOpacity={0.8}
+        style={[styles.backBtn, { top: insets.top + 16 }]} 
+        accessibilityLabel="Quay lại"
+      >
+        <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
       </TouchableOpacity>
 
       <View style={styles.centerWrap}>
@@ -100,7 +105,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   bg: { ...StyleSheet.absoluteFillObject },
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.8)' },
-  closeBtn: { position: 'absolute', left: 16, zIndex: 2 },
+  backBtn: { 
+    position: 'absolute', 
+    left: 16, 
+    zIndex: 10, 
+    backgroundColor: 'rgba(0, 0, 0, 0.3)', 
+    borderRadius: 20, 
+    padding: 8 
+  },
   centerWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
   card: {
     width: '100%', maxWidth: 420,

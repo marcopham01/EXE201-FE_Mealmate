@@ -1,10 +1,17 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getCurrentUserId, subscribeToUserIdChanges } from '../utils/userSession';
+import { 
+  getSavedMealsFromServer, 
+  saveMealToServer, 
+  deleteSavedMealFromServer 
+} from '../api/meals';
 
 const SavedMealsContext = createContext(null);
 
 // Key để lưu trong AsyncStorage
 const STORAGE_KEY = 'savedMeals';
+const getStorageKeyForUser = (userId) => userId ? `${STORAGE_KEY}:${userId}` : STORAGE_KEY;
 
 // Map từ index buổi sang key
 const MEAL_TIME_MAP = {
@@ -26,36 +33,185 @@ export function SavedMealsProvider({ children }) {
     lunch: [],     // Trưa
     dinner: [],    // Tối
   });
+  
+  // Refs để tránh re-render không cần thiết
+  const isLoadingRef = useRef(false);
+  const storageDebounceTimerRef = useRef(null);
 
-  // Load saved meals từ AsyncStorage khi mount
+  // Load từ server theo userId (với fallback về AsyncStorage)
+  const loadSavedMeals = useCallback(async (userIdOverride) => {
+    // Tránh load đồng thời nhiều lần
+    if (isLoadingRef.current) {
+      console.log('[SavedMealsContext] Already loading, skipping...');
+      return;
+    }
+    
+    isLoadingRef.current = true;
+    
+    try {
+      const userId = userIdOverride ?? await getCurrentUserId();
+      if (!userId) {
+        // Nếu chưa có userId, load từ AsyncStorage
+        const storageKey = getStorageKeyForUser(null);
+        const data = await AsyncStorage.getItem(storageKey);
+        if (data) {
+          const parsed = JSON.parse(data);
+          setSavedMeals({
+            breakfast: parsed.breakfast || [],
+            lunch: parsed.lunch || [],
+            dinner: parsed.dinner || [],
+          });
+        } else {
+          setSavedMeals({ breakfast: [], lunch: [], dinner: [] });
+        }
+        isLoadingRef.current = false;
+        return;
+      }
+
+      // Load từ server
+      console.log('[SavedMealsContext] Loading saved meals from server...');
+      let allSavedMeals = [];
+      let currentPage = 1;
+      let hasMore = true;
+      const limit = 50;
+      const maxPages = 10; // Giới hạn tối đa 10 pages để tránh load quá nhiều
+
+      // Load tất cả pages
+      while (hasMore && currentPage <= maxPages) {
+        try {
+          const result = await getSavedMealsFromServer({ page: currentPage, limit });
+          if (result && result.data && Array.isArray(result.data)) {
+            allSavedMeals = [...allSavedMeals, ...result.data];
+            hasMore = result.pagination?.hasNextPage || false;
+            currentPage++;
+            
+            if (result.data.length === 0) {
+              hasMore = false;
+            }
+          } else {
+            hasMore = false;
+          }
+        } catch (error) {
+          console.warn('[SavedMealsContext] Error loading from server, using cache:', error.message);
+          hasMore = false;
+        }
+      }
+
+      // Phân loại meals theo mealTime từ tags
+      const categorized = {
+        breakfast: [],
+        lunch: [],
+        dinner: [],
+      };
+
+      allSavedMeals.forEach(savedItem => {
+        const meal = savedItem.meal || savedItem;
+        const tags = savedItem.tags || [];
+        
+        // Tìm mealTime từ tags (format: 'mealTime:breakfast', 'mealTime:lunch', 'mealTime:dinner')
+        let mealTime = null;
+        const mealTimeTag = tags.find(tag => tag.startsWith('mealTime:'));
+        if (mealTimeTag) {
+          mealTime = mealTimeTag.replace('mealTime:', '');
+        } else {
+          // Fallback: dùng mealTime từ meal object nếu có
+          if (meal.mealTime && Array.isArray(meal.mealTime) && meal.mealTime.length > 0) {
+            mealTime = meal.mealTime[0];
+          }
+        }
+
+        // Map meal vào category tương ứng
+        if (mealTime === 'breakfast') {
+          categorized.breakfast.push(meal);
+        } else if (mealTime === 'lunch') {
+          categorized.lunch.push(meal);
+        } else if (mealTime === 'dinner') {
+          categorized.dinner.push(meal);
+        } else {
+          // Nếu không có mealTime, thêm vào breakfast mặc định
+          categorized.breakfast.push(meal);
+        }
+      });
+
+      setSavedMeals(categorized);
+
+      // Lưu vào AsyncStorage làm cache
+      const storageKey = getStorageKeyForUser(userId);
+      await AsyncStorage.setItem(storageKey, JSON.stringify(categorized));
+
+      console.log('[SavedMealsContext] Loaded from server:', {
+        total: allSavedMeals.length,
+        breakfast: categorized.breakfast.length,
+        lunch: categorized.lunch.length,
+        dinner: categorized.dinner.length,
+      });
+    } catch (error) {
+      console.error('[SavedMealsContext] Error loading saved meals:', error);
+      // Fallback về AsyncStorage
+      try {
+        const userId = userIdOverride ?? await getCurrentUserId();
+        const storageKey = getStorageKeyForUser(userId);
+        const data = await AsyncStorage.getItem(storageKey);
+        if (data) {
+          const parsed = JSON.parse(data);
+          setSavedMeals({
+            breakfast: parsed.breakfast || [],
+            lunch: parsed.lunch || [],
+            dinner: parsed.dinner || [],
+          });
+        } else {
+          setSavedMeals({ breakfast: [], lunch: [], dinner: [] });
+        }
+      } catch (storageError) {
+        console.error('[SavedMealsContext] Error loading from storage:', storageError);
+        setSavedMeals({ breakfast: [], lunch: [], dinner: [] });
+      }
+    } finally {
+      isLoadingRef.current = false;
+    }
+  }, []);
+
+  // Lắng nghe thay đổi userId
   useEffect(() => {
     loadSavedMeals();
-  }, []);
-
-  // Load từ AsyncStorage
-  const loadSavedMeals = useCallback(async () => {
-    try {
-      const data = await AsyncStorage.getItem(STORAGE_KEY);
-      if (data) {
-        const parsed = JSON.parse(data);
-        setSavedMeals({
-          breakfast: parsed.breakfast || [],
-          lunch: parsed.lunch || [],
-          dinner: parsed.dinner || [],
-        });
+    const unsubscribe = subscribeToUserIdChanges(async (userId, oldUserId) => {
+      // Clear local state khi đổi user
+      setSavedMeals({ breakfast: [], lunch: [], dinner: [] });
+      
+      // Clear AsyncStorage cache của user cũ nếu có
+      if (oldUserId) {
+        try {
+          const oldStorageKey = getStorageKeyForUser(oldUserId);
+          await AsyncStorage.removeItem(oldStorageKey);
+          console.log('[SavedMealsContext] Cleared AsyncStorage cache for old user:', oldUserId);
+        } catch (error) {
+          console.warn('[SavedMealsContext] Error clearing old user cache:', error);
+        }
       }
-    } catch (error) {
-      console.error('Error loading saved meals:', error);
-    }
-  }, []);
+      
+      // Load data cho user mới
+      await loadSavedMeals(userId);
+    });
+    return () => unsubscribe && unsubscribe();
+  }, [loadSavedMeals]);
 
-  // Lưu vào AsyncStorage
+  // Lưu vào AsyncStorage (theo userId) - với debounce để tránh write quá nhiều
   const saveToStorage = useCallback(async (meals) => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(meals));
-    } catch (error) {
-      console.error('Error saving meals to storage:', error);
+    // Clear timer cũ nếu có
+    if (storageDebounceTimerRef.current) {
+      clearTimeout(storageDebounceTimerRef.current);
     }
+    
+    // Debounce 500ms để tránh write quá nhiều lần
+    storageDebounceTimerRef.current = setTimeout(async () => {
+      try {
+        const userId = await getCurrentUserId();
+        const storageKey = getStorageKeyForUser(userId);
+        await AsyncStorage.setItem(storageKey, JSON.stringify(meals));
+      } catch (error) {
+        console.error('Error saving meals to storage:', error);
+      }
+    }, 500);
   }, []);
 
   /**
@@ -71,38 +227,109 @@ export function SavedMealsProvider({ children }) {
       return false;
     }
 
+    // Kiểm tra xem meal đã tồn tại chưa (dựa vào id trong state hiện tại)
+    // Sử dụng functional update để tránh dependency vào savedMeals
+    let isCurrentlySaved = false;
     let wasAdded = false;
 
     setSavedMeals(prev => {
-      const newMeals = { ...prev };
-      
-      // Kiểm tra xem meal đã tồn tại chưa (dựa vào id)
-      const existingIndex = newMeals[mealTimeKey].findIndex(
-        m => m.id === meal.id
-      );
+      isCurrentlySaved = prev[mealTimeKey].some(m => m.id === meal.id);
+      return prev; // Không thay đổi state ở đây
+    });
 
-      if (existingIndex >= 0) {
-        // Nếu đã tồn tại, xóa khỏi danh sách (toggle off)
+    try {
+      const userId = await getCurrentUserId();
+      
+      if (isCurrentlySaved) {
+        // Nếu đã tồn tại, xóa khỏi server
         wasAdded = false;
-        newMeals[mealTimeKey] = newMeals[mealTimeKey].filter(m => m.id !== meal.id);
+        try {
+          await deleteSavedMealFromServer(meal.id);
+          console.log('[SavedMealsContext] Meal removed from server:', {
+            action: 'REMOVED',
+            mealId: meal.id,
+            mealTitle: meal.title || meal.name,
+            mealTime: mealTimeKey,
+          });
+        } catch (error) {
+          console.warn('[SavedMealsContext] Error deleting from server:', error.message);
+          // Vẫn tiếp tục update local state
+        }
+
+        // Update local state
+        setSavedMeals(prev => {
+          const newMeals = { ...prev };
+          newMeals[mealTimeKey] = newMeals[mealTimeKey].filter(m => m.id !== meal.id);
+          saveToStorage(newMeals);
+          return newMeals;
+        });
       } else {
-        // Nếu chưa tồn tại, thêm vào đầu danh sách (toggle on)
+        // Nếu chưa tồn tại, lưu lên server
         wasAdded = true;
-        newMeals[mealTimeKey] = [
-          {
+        
+        // Lưu mealTime vào tags để có thể phân loại sau này
+        const tags = [`mealTime:${mealTimeKey}`];
+        
+        try {
+          await saveMealToServer({
+            mealId: meal.id,
+            note: '',
+            tags: tags,
+          });
+          console.log('[SavedMealsContext] Meal saved to server:', {
+            action: 'SAVED',
+            mealId: meal.id,
+            mealTitle: meal.title || meal.name,
+            mealTime: mealTimeKey,
+          });
+        } catch (error) {
+          console.warn('[SavedMealsContext] Error saving to server:', error.message);
+          // Vẫn tiếp tục update local state
+        }
+
+        // Update local state
+        setSavedMeals(prev => {
+          const newMeals = { ...prev };
+          const mealToSave = {
             ...meal,
             savedAt: new Date().toISOString(),
-          },
-          ...newMeals[mealTimeKey],
-        ];
+          };
+          newMeals[mealTimeKey] = [
+            mealToSave,
+            ...newMeals[mealTimeKey],
+          ];
+          saveToStorage(newMeals);
+          return newMeals;
+        });
       }
-      console.log('newMeals:', newMeals[mealTimeKey]);
-
-      // Lưu vào storage
-      saveToStorage(newMeals);
-
-      return newMeals;
-    });
+    } catch (error) {
+      console.error('[SavedMealsContext] Error in saveMeal:', error);
+      // Fallback: chỉ update local state nếu không có userId
+      if (!isCurrentlySaved) {
+        setSavedMeals(prev => {
+          const newMeals = { ...prev };
+          const mealToSave = {
+            ...meal,
+            savedAt: new Date().toISOString(),
+          };
+          newMeals[mealTimeKey] = [
+            mealToSave,
+            ...newMeals[mealTimeKey],
+          ];
+          saveToStorage(newMeals);
+          return newMeals;
+        });
+        wasAdded = true;
+      } else {
+        setSavedMeals(prev => {
+          const newMeals = { ...prev };
+          newMeals[mealTimeKey] = newMeals[mealTimeKey].filter(m => m.id !== meal.id);
+          saveToStorage(newMeals);
+          return newMeals;
+        });
+        wasAdded = false;
+      }
+    }
 
     return wasAdded;
   }, [saveToStorage]);
@@ -116,13 +343,27 @@ export function SavedMealsProvider({ children }) {
     const mealTimeKey = MEAL_TIME_MAP[mealTimeIndex];
     if (!mealTimeKey) return false;
 
+    try {
+      // Xóa khỏi server
+      const userId = await getCurrentUserId();
+      if (userId) {
+        try {
+          await deleteSavedMealFromServer(mealId);
+          console.log('[SavedMealsContext] Meal removed from server:', mealId);
+        } catch (error) {
+          console.warn('[SavedMealsContext] Error deleting from server:', error.message);
+          // Vẫn tiếp tục update local state
+        }
+      }
+    } catch (error) {
+      console.warn('[SavedMealsContext] Error in removeMeal:', error.message);
+    }
+
+    // Update local state
     setSavedMeals(prev => {
       const newMeals = { ...prev };
       newMeals[mealTimeKey] = newMeals[mealTimeKey].filter(m => m.id !== mealId);
-      
-      // Lưu vào storage
       saveToStorage(newMeals);
-
       return newMeals;
     });
 
@@ -174,7 +415,8 @@ export function SavedMealsProvider({ children }) {
     return null;
   }, []);
 
-  const value = {
+  // Memoize value để tránh re-render không cần thiết
+  const value = useMemo(() => ({
     savedMeals,
     saveMeal,
     removeMeal,
@@ -182,7 +424,16 @@ export function SavedMealsProvider({ children }) {
     getSavedMealsByTime,
     determineMealTime,
     loadSavedMeals,
-  };
+  }), [savedMeals, saveMeal, removeMeal, isMealSaved, getSavedMealsByTime, determineMealTime, loadSavedMeals]);
+
+  // Cleanup debounce timer khi unmount
+  useEffect(() => {
+    return () => {
+      if (storageDebounceTimerRef.current) {
+        clearTimeout(storageDebounceTimerRef.current);
+      }
+    };
+  }, []);
 
   return (
     <SavedMealsContext.Provider value={value}>

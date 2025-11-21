@@ -178,6 +178,31 @@ export default function WeeklyMealPlanScreen() {
     });
   };
   
+  // Hàm xem chi tiết món đã chọn
+  const handleViewMealDetails = async (date, mealTime) => {
+    const selectedMeal = getSelectedMeal(date, mealTime);
+    if (!selectedMeal) return;
+    
+    // Tìm meal đầy đủ từ mealsFromAPI hoặc fetch từ API
+    let fullMeal = mealsFromAPI.find(m => m.id === selectedMeal.id);
+    
+    // Nếu không tìm thấy trong cache, fetch từ API
+    if (!fullMeal && selectedMeal.id) {
+      try {
+        const { getMealById } = await import('../api/meals');
+        fullMeal = await getMealById(selectedMeal.id);
+      } catch (error) {
+        console.error('Error fetching meal details:', error);
+      }
+    }
+    
+    // Navigate đến DetailsMealScreen với meal data
+    navigation.navigate('MealDetails', {
+      mealId: selectedMeal.id,
+      meal: fullMeal || selectedMeal,
+    });
+  };
+  
   // Lấy món đã chọn cho một bữa
   const getSelectedMeal = (date, mealTime) => {
     const meals = getMealsForDate(date);
@@ -296,7 +321,14 @@ export default function WeeklyMealPlanScreen() {
                       </View>
                       <TouchableOpacity
                         style={[styles.mealButton, selectedMeal && styles.mealButtonSelected]}
-                        onPress={() => handleSelectMeal(date, mealTime)}
+                        onPress={() => {
+                          if (selectedMeal) {
+                            handleViewMealDetails(date, mealTime);
+                          } else {
+                            handleSelectMeal(date, mealTime);
+                          }
+                        }}
+                        activeOpacity={0.7}
                       >
                         {selectedMeal ? (
                           <View style={styles.selectedMeal}>

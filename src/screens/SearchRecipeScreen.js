@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Image, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -36,19 +36,32 @@ function MealCard({ meal, onPress, onBookmarkPress }) {
           <Text style={styles.mealTime}>Thời gian: {meal.time}</Text>
         </View>
         <View style={styles.mealCardRight}>
+          {/* Meal image from database */}
+          {meal.image && (
+            <Image 
+              source={{ uri: meal.image }} 
+              style={styles.mealCardImage}
+              resizeMode="cover"
+            />
+          )}
           <TouchableOpacity
             onPress={(e) => {
               e.stopPropagation(); // Ngăn không cho trigger onPress của card
               onBookmarkPress && onBookmarkPress(meal);
             }}
-            activeOpacity={0.7}
-            style={{ alignSelf: 'flex-end', margin: 10 }}
+            activeOpacity={0.8}
+            style={[
+              styles.bookmarkButton,
+              {
+                backgroundColor: isSaved ? '#FAE2AF' : 'rgba(255, 255, 255, 0.95)',
+                borderWidth: isSaved ? 0 : 1,
+              }
+            ]}
           >
             <Ionicons 
               name={isSaved ? "bookmark" : "bookmark-outline"} 
-              size={18} 
-              color="#3C2C21" 
-              style={{ opacity: isSaved ? 1 : 0.8 }} 
+              size={22} 
+              color={isSaved ? "#3C2C21" : "#3C2C21"} 
             />
           </TouchableOpacity>
         </View>
@@ -195,12 +208,29 @@ export default function SearchRecipeScreen() {
             style={styles.searchInput}
             value={searchText}
             onChangeText={setSearchText}
-            autoFocus={true}
+            autoFocus={false}
             autoCorrect={true}
             autoCapitalize="none"
             keyboardType="default"
             returnKeyType="search"
-            blurOnSubmit={false}
+            blurOnSubmit={true}
+            onSubmitEditing={() => {
+              // Hủy debounce timeout nếu có
+              if (searchTimeoutRef.current) {
+                clearTimeout(searchTimeoutRef.current);
+                searchTimeoutRef.current = null;
+              }
+              // Ẩn bàn phím khi bấm nút "Tìm"
+              Keyboard.dismiss();
+              // Thực hiện tìm kiếm ngay lập tức
+              if (searchText.trim() || selectedIngredients.length > 0) {
+                performSearch(searchText, selectedIngredients);
+              }
+            }}
+            onFocus={() => {
+              // Khi focus vào thanh tìm kiếm, bàn phím sẽ tự động hiện lên
+              // Không cần làm gì thêm
+            }}
           />
           {searchText.length > 0 && (
             <TouchableOpacity
@@ -268,8 +298,7 @@ export default function SearchRecipeScreen() {
                   key={`${meal.id}-${refreshKey}`}
                   meal={meal}
                   onPress={() => {
-                    // TODO: Navigate to meal detail screen
-                    console.log('Meal selected:', meal);
+                    navigation.navigate('MealDetails', { mealId: meal.id, meal });
                   }}
                   onBookmarkPress={handleBookmarkPress}
                 />
@@ -513,6 +542,16 @@ const styles = StyleSheet.create({
   mealCardRight: {
     width: 110,
     backgroundColor: '#EFD493',
+    position: 'relative',
+  },
+  mealCardImage: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   mealTitle: {
     color: '#3C2C21',
@@ -530,5 +569,19 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontWeight: '800',
     fontSize: 14,
+  },
+  bookmarkButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 10,
+    borderRadius: 20,
+    padding: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
+    borderColor: 'rgba(60, 44, 33, 0.2)',
   },
 });

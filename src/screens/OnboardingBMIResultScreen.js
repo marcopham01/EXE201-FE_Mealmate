@@ -20,8 +20,17 @@ export default function OnboardingBMIResultScreen({ route, navigation }) {
     // Lưu thông tin BMI và thông số cơ bản để dùng cho phân tích sau này
     (async () => {
       try {
-        const profile = { goal, activity, height, weight, bmi };
+        // Tính thứ 2 của tuần hiện tại
+        const today = new Date();
+        const dayIndex = (today.getDay() + 6) % 7; // 0 = Monday, 6 = Sunday
+        const monday = new Date(today);
+        monday.setHours(0, 0, 0, 0);
+        monday.setDate(today.getDate() - dayIndex);
+        const weekStartDate = monday.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+        
+        const profile = { goal, activity, height, weight, bmi, weekStartDate };
         await AsyncStorage.setItem('userProfileBMI', JSON.stringify(profile));
+        await AsyncStorage.setItem('mealPlanWeekStart', weekStartDate);
       } catch (e) {
         // ignore
       }

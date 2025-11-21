@@ -2,6 +2,99 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL, callWithAutoRefresh } from './auth';
 
+// ==================== CACHE & REQUEST DEDUPLICATION ====================
+
+// Simple in-memory cache với TTL (Time To Live)
+const cache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 phút
+const pendingRequests = new Map(); // Request deduplication
+
+/**
+ * Tạo cache key từ params
+ */
+function getCacheKey(endpoint, params = {}) {
+  const sortedParams = Object.keys(params)
+    .sort()
+    .map(key => `${key}:${params[key]}`)
+    .join('|');
+  return `${endpoint}${sortedParams ? `|${sortedParams}` : ''}`;
+}
+
+/**
+ * Lấy từ cache nếu còn valid
+ */
+function getFromCache(key) {
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+  if (cached) {
+    cache.delete(key); // Xóa cache hết hạn
+  }
+  return null;
+}
+
+/**
+ * Lưu vào cache
+ */
+function setCache(key, data) {
+  cache.set(key, {
+    data,
+    timestamp: Date.now(),
+  });
+}
+
+/**
+ * Xóa cache
+ */
+function clearCache(pattern = null) {
+  if (!pattern) {
+    cache.clear();
+    pendingRequests.clear(); // Clear pending requests khi clear all cache
+    return;
+  }
+  // Xóa cache theo pattern
+  for (const key of cache.keys()) {
+    if (key.includes(pattern)) {
+      cache.delete(key);
+    }
+  }
+}
+
+/**
+ * Export clearCache để có thể gọi từ bên ngoài (khi logout/đăng nhập user mới)
+ * Clear tất cả cache và pending requests
+ */
+export function clearMealsCache() {
+  cache.clear();
+  pendingRequests.clear();
+  console.log('[clearMealsCache] Cleared all meals cache and pending requests');
+}
+
+/**
+ * Request deduplication - tránh gọi API nhiều lần cùng lúc
+ */
+async function deduplicateRequest(key, requestFn) {
+  // Nếu đã có request đang chạy, đợi kết quả
+  if (pendingRequests.has(key)) {
+    return pendingRequests.get(key);
+  }
+  
+  // Tạo promise mới
+  const promise = requestFn()
+    .then(result => {
+      pendingRequests.delete(key);
+      return result;
+    })
+    .catch(error => {
+      pendingRequests.delete(key);
+      throw error;
+    });
+  
+  pendingRequests.set(key, promise);
+  return promise;
+}
+
 /**
  * Chuyển đổi tiếng Việt có dấu thành không dấu để tìm kiếm
  * @param {string} str - Chuỗi tiếng Việt có dấu
@@ -76,6 +169,26 @@ function transformMealFromBackend(meal) {
     ? `${Math.max(5, meal.instructions.length * 3)} phút`
     : '15 phút';
 
+  // Xử lý image: giữ nguyên URL từ database, không thay đổi
+  // Log để debug nếu phát hiện unsplash URL (có thể backend đang trả về sai)
+  let imageUrl = meal.image || null;
+  if (imageUrl && typeof imageUrl === 'string') {
+    // Log cảnh báo nếu phát hiện unsplash URL (có thể backend đang generate thay vì dùng URL từ database)
+    if (imageUrl.includes('unsplash.com')) {
+      console.warn('[transformMealFromBackend] WARNING: Backend returned unsplash URL instead of database image URL:', {
+        mealId: meal._id || meal.id,
+        mealName: meal.name || meal.title,
+        unsplashUrl: imageUrl,
+        expected: 'Should use image URL from database field'
+      });
+    }
+    // Giữ nguyên URL từ backend (dù là unsplash hay database URL)
+    // Frontend không thể biết URL đúng từ database nếu backend không trả về
+  } else {
+    // Chỉ dùng placeholder nếu không có image
+    imageUrl = 'https://via.placeholder.com/150';
+  }
+
   return {
     id: meal._id || meal.id,
     title: meal.name || meal.title || 'Món ăn', // Backend trả về 'name'
@@ -83,7 +196,7 @@ function transformMealFromBackend(meal) {
     time: estimatedTime,
     mealIngredients: ingredientNames, // Lưu danh sách tên nguyên liệu để filter
     instructions: meal.instructions || [],
-    image: meal.image || 'https://via.placeholder.com/150',
+    image: imageUrl,
     category: meal.category || null,
     subCategory: meal.subCategory || null,
     dietType: meal.dietType || null,
@@ -100,24 +213,37 @@ function transformMealFromBackend(meal) {
  * @param {Object} params - Tham số
  * @param {number} params.page - Số trang (mặc định 1)
  * @param {number} params.limit - Số items mỗi trang (mặc định 50)
+ * @param {boolean} params.forceRefresh - Bỏ qua cache nếu true
  * @returns {Promise<Object>} Response với data và pagination
  */
-export async function getAllMeals({ page = 1, limit = 50 } = {}) {
-  try {
-    const headers = await getAuthHeaders();
-    
-    const queryParams = new URLSearchParams();
-    queryParams.append('page', page.toString());
-    queryParams.append('limit', limit.toString());
+export async function getAllMeals({ page = 1, limit = 50, forceRefresh = false } = {}) {
+  const cacheKey = getCacheKey('getAllMeals', { page, limit });
+  
+  // Kiểm tra cache trước
+  if (!forceRefresh) {
+    const cached = getFromCache(cacheKey);
+    if (cached) {
+      console.log(`[getAllMeals] Using cache for page ${page}`);
+      return cached;
+    }
+  }
+  
+  return deduplicateRequest(cacheKey, async () => {
+    try {
+      const headers = await getAuthHeaders();
+      
+      const queryParams = new URLSearchParams();
+      queryParams.append('page', page.toString());
+      queryParams.append('limit', limit.toString());
 
-    const url = `${BASE_URL}/meal/getallmeal${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
-    
-    console.log(`[getAllMeals] Fetching: ${url}`);
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: headers,
-    });
+      const url = `${BASE_URL}/meal/getallmeal${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      
+      console.log(`[getAllMeals] Fetching: ${url}`);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: headers,
+      });
 
     console.log(`[getAllMeals] Response status: ${response.status}`);
 
@@ -170,6 +296,15 @@ export async function getAllMeals({ page = 1, limit = 50 } = {}) {
     if (mealsArray.length > 0) {
       const transformedData = mealsArray.map(meal => {
         try {
+          // Log để debug image URL từ backend
+          if (meal.image) {
+            console.log('[getAllMeals] Meal image from backend:', {
+              mealId: meal._id || meal.id,
+              mealName: meal.name || meal.title,
+              imageUrl: meal.image,
+              isUnsplash: meal.image.includes('unsplash.com')
+            });
+          }
           return transformMealFromBackend(meal);
         } catch (transformError) {
           console.error('[getAllMeals] Error transforming meal:', transformError, meal);
@@ -208,27 +343,44 @@ export async function getAllMeals({ page = 1, limit = 50 } = {}) {
       };
     }
     
+    // Lưu vào cache
+    setCache(cacheKey, result);
+    
     return result;
-  } catch (error) {
-    console.error('[getAllMeals] Error:', error.message, error);
-    throw error;
-  }
+    } catch (error) {
+      console.error('[getAllMeals] Error:', error.message, error);
+      throw error;
+    }
+  });
 }
 
 /**
  * Lấy chi tiết món ăn theo id
  * @param {string} id - ID của meal
+ * @param {boolean} forceRefresh - Bỏ qua cache nếu true
  * @returns {Promise<Object>} Meal object đã transform
  */
-export async function getMealById(id) {
-  try {
-    const headers = await getAuthHeaders();
-    const url = `${BASE_URL}/meal/getmealbyid/${id}`;
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: headers,
-    });
+export async function getMealById(id, forceRefresh = false) {
+  const cacheKey = getCacheKey('getMealById', { id });
+  
+  // Kiểm tra cache trước
+  if (!forceRefresh) {
+    const cached = getFromCache(cacheKey);
+    if (cached) {
+      console.log(`[getMealById] Using cache for meal ${id}`);
+      return cached;
+    }
+  }
+  
+  return deduplicateRequest(cacheKey, async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const url = `${BASE_URL}/meal/getmealbyid/${id}`;
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: headers,
+      });
 
     if (response.status === 404) {
       throw new Error('Meal not found');
@@ -241,19 +393,188 @@ export async function getMealById(id) {
     const result = await handleJson(response);
     
     // Transform data từ backend format sang frontend format
+    let transformed = null;
     if (result.data) {
-      return transformMealFromBackend(result.data);
+      transformed = transformMealFromBackend(result.data);
+      // Lưu vào cache
+      setCache(cacheKey, transformed);
+      return transformed;
     }
     
     return null;
-  } catch (error) {
-    console.error('Error getting meal by id:', error.message);
-    throw error;
+    } catch (error) {
+      console.error('Error getting meal by id:', error.message);
+      throw error;
+    }
+  });
+}
+
+/**
+ * Tìm kiếm meals theo tên sử dụng API searchmeal
+ * @param {Object} params - Tham số tìm kiếm
+ * @param {string} params.name - Tên món ăn cần tìm kiếm
+ * @param {number} params.page - Số trang (mặc định 1)
+ * @param {number} params.limit - Số lượng món ăn mỗi trang (mặc định 10)
+ * @param {boolean} params.forceRefresh - Bỏ qua cache nếu true
+ * @returns {Promise<Object>} Response với data và pagination
+ */
+export async function searchMealsByAPI({ name = '', page = 1, limit = 10, forceRefresh = false } = {}) {
+  const cacheKey = getCacheKey('searchMealsByAPI', { name: name.trim().toLowerCase(), page, limit });
+  
+  // Kiểm tra cache trước (chỉ cache nếu có name)
+  if (!forceRefresh && name.trim()) {
+    const cached = getFromCache(cacheKey);
+    if (cached) {
+      console.log(`[searchMealsByAPI] Using cache for "${name}" page ${page}`);
+      return cached;
+    }
   }
+  
+  return deduplicateRequest(cacheKey, async () => {
+    try {
+      const headers = await getAuthHeaders();
+    
+    // Kiểm tra name không được để trống
+    if (!name || !name.trim()) {
+      throw new Error('Tên món ăn không được để trống');
+    }
+    
+    const queryParams = new URLSearchParams();
+    queryParams.append('name', name.trim());
+    queryParams.append('page', page.toString());
+    queryParams.append('limit', limit.toString());
+    
+    const url = `${BASE_URL}/meal/searchmeal?${queryParams.toString()}`;
+    
+    console.log(`[searchMealsByAPI] Searching: ${url}`);
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: headers,
+    });
+    
+    console.log(`[searchMealsByAPI] Response status: ${response.status}`);
+    
+    if (!response.ok) {
+      if (response.status === 400) {
+        const errorData = await handleJson(response);
+        throw new Error(errorData?.message || 'Tên món ăn không được để trống');
+      }
+      if (response.status === 401) {
+        console.error('[searchMealsByAPI] 401 Unauthorized - Token might be expired');
+        throw new Error('401 Unauthorized');
+      }
+      const errorText = await response.text();
+      console.error(`[searchMealsByAPI] HTTP ${response.status} error:`, errorText);
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const result = await handleJson(response);
+    
+    // Log chi tiết response structure để debug
+    console.log(`[searchMealsByAPI] Full response:`, JSON.stringify(result, null, 2));
+    console.log(`[searchMealsByAPI] Response structure:`, {
+      hasData: !!result?.data,
+      dataIsArray: Array.isArray(result?.data),
+      dataLength: result?.data?.length || 0,
+      dataType: typeof result?.data,
+      hasPagination: !!result?.pagination,
+      resultKeys: result ? Object.keys(result) : [],
+    });
+    
+    // Xử lý response - có thể data là array trực tiếp hoặc nằm trong object
+    let mealsArray = [];
+    
+    if (result) {
+      // Nếu data là array trực tiếp
+      if (Array.isArray(result.data)) {
+        mealsArray = result.data;
+      }
+      // Nếu data là object có items bên trong (structure: {data: {items: [...], pagination: {...}}})
+      else if (result.data && typeof result.data === 'object' && Array.isArray(result.data.items)) {
+        mealsArray = result.data.items;
+      }
+      // Nếu result là array trực tiếp (không có wrapper)
+      else if (Array.isArray(result)) {
+        mealsArray = result;
+      }
+      // Nếu có success và data
+      else if (result.success && result.data) {
+        if (Array.isArray(result.data)) {
+          mealsArray = result.data;
+        } else if (Array.isArray(result.data.items)) {
+          mealsArray = result.data.items;
+        }
+      }
+    }
+    
+    console.log(`[searchMealsByAPI] Extracted meals array length: ${mealsArray.length}`);
+    
+    // Transform data từ backend format sang frontend format
+    if (mealsArray.length > 0) {
+      const transformedData = mealsArray.map(meal => {
+        try {
+          return transformMealFromBackend(meal);
+        } catch (transformError) {
+          console.error('[searchMealsByAPI] Error transforming meal:', transformError, meal);
+          return null;
+        }
+      }).filter(meal => meal !== null);
+      
+      console.log(`[searchMealsByAPI] Transformed ${transformedData.length} meals from ${mealsArray.length} raw meals`);
+      result.data = transformedData;
+    } else {
+      console.warn('[searchMealsByAPI] No meals found in response');
+      result.data = [];
+    }
+    
+    // Đảm bảo result tồn tại
+    if (!result) {
+      result = {};
+    }
+    
+    // Normalize pagination
+    if (result.pagination) {
+      result.pagination = {
+        page: result.pagination.page || page,
+        limit: result.pagination.limit || limit,
+        total: result.pagination.total || 0,
+        totalPages: result.pagination.totalPages || 1,
+        hasNextPage: result.pagination.hasNextPage || false,
+        hasPrevPage: result.pagination.hasPrevPage || false,
+      };
+    } else {
+      result.pagination = {
+        page: page,
+        limit: limit,
+        total: result.data?.length || 0,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false,
+      };
+    }
+    
+    // Đảm bảo result.data là array
+    if (!result.data) {
+      result.data = [];
+    }
+    
+    // Lưu vào cache (chỉ cache nếu có name)
+    if (name.trim()) {
+      setCache(cacheKey, result);
+    }
+    
+    return result;
+    } catch (error) {
+      console.error('[searchMealsByAPI] Error:', error.message, error);
+      throw error;
+    }
+  });
 }
 
 /**
  * Tìm kiếm meals trong database dựa trên tên món ăn và tag (nguyên liệu)
+ * Sử dụng API searchmeal mới cho search theo tên, filter ingredients ở client side
  * @param {Object} params - Tham số tìm kiếm
  * @param {string} params.searchText - Từ khóa tìm kiếm (tên món ăn)
  * @param {Array<string>} params.ingredients - Mảng các nguyên liệu được chọn từ tags
@@ -261,168 +582,82 @@ export async function getMealById(id) {
  */
 export async function searchMeals({ searchText = '', ingredients = [] }) {
   try {
-    const headers = await getAuthHeaders();
-    
-    // Lấy tất cả meals từ backend và filter ở client side
-    // Vì backend chưa có endpoint search, ta sẽ filter theo tên và tag
     let allMeals = [];
-    let currentPage = 1;
-    const limit = 50;
-    let hasMore = true;
     
-    // Lấy tất cả meals với pagination
-    console.log('[searchMeals] Starting to fetch meals from API...');
-    while (hasMore && allMeals.length < 200) {
+    // Nếu có searchText, sử dụng API searchmeal mới
+    if (searchText && searchText.trim()) {
+      console.log('[searchMeals] Using searchMealsByAPI for name search');
       try {
-        console.log(`[searchMeals] Fetching page ${currentPage}...`);
-        const result = await getAllMeals({ page: currentPage, limit });
+        // Lấy tất cả kết quả với pagination
+        let currentPage = 1;
+        const limit = 50;
+        let hasMore = true;
         
-        if (result && result.data && Array.isArray(result.data)) {
-          // getAllMeals đã transform data rồi, không cần transform lại
-          allMeals = [...allMeals, ...result.data];
-          console.log(`[searchMeals] Page ${currentPage}: Got ${result.data.length} meals, total: ${allMeals.length}`);
-          hasMore = result.pagination?.hasNextPage || false;
-          currentPage++;
+        while (hasMore && allMeals.length < 200) {
+          const result = await searchMealsByAPI({ 
+            name: searchText.trim(), 
+            page: currentPage, 
+            limit 
+          });
           
-          // Nếu trang này không có data, dừng lại
-          if (result.data.length === 0) {
-            console.log('[searchMeals] No more meals in this page, stopping');
+          if (result && result.data && Array.isArray(result.data)) {
+            allMeals = [...allMeals, ...result.data];
+            console.log(`[searchMeals] Page ${currentPage}: Got ${result.data.length} meals, total: ${allMeals.length}`);
+            hasMore = result.pagination?.hasNextPage || false;
+            currentPage++;
+            
+            if (result.data.length === 0) {
+              hasMore = false;
+            }
+          } else {
             hasMore = false;
           }
-        } else {
-          console.warn(`[searchMeals] Invalid result structure on page ${currentPage}:`, result);
+        }
+      } catch (apiError) {
+        console.warn('[searchMeals] API search failed, returning empty array:', apiError.message);
+        // Nếu API searchmeal lỗi, trả về mảng rỗng
+        return [];
+      }
+    } else {
+      // Nếu không có searchText, lấy tất cả meals từ getAllMeals
+      console.log('[searchMeals] No searchText, fetching all meals');
+      let currentPage = 1;
+      const limit = 50;
+      let hasMore = true;
+      
+      while (hasMore && allMeals.length < 200) {
+        try {
+          const result = await getAllMeals({ page: currentPage, limit });
+          
+          if (result && result.data && Array.isArray(result.data)) {
+            allMeals = [...allMeals, ...result.data];
+            hasMore = result.pagination?.hasNextPage || false;
+            currentPage++;
+            
+            if (result.data.length === 0) {
+              hasMore = false;
+            }
+          } else {
+            hasMore = false;
+          }
+        } catch (error) {
+          console.error(`[searchMeals] Error fetching meals page ${currentPage}:`, error.message);
           hasMore = false;
         }
-      } catch (error) {
-        console.error(`[searchMeals] Error fetching meals page ${currentPage}:`, error.message);
-        // Nếu lỗi ở trang đầu, có thể API không hoạt động
-        if (currentPage === 1) {
-          console.warn('[searchMeals] API might be unavailable on first page, using mock data');
-          return getMockMeals({ searchText, ingredients });
-        }
-        // Nếu lỗi ở trang sau, có thể đã hết data
-        console.log('[searchMeals] Stopping pagination due to error');
-        hasMore = false;
       }
     }
     
     console.log(`[searchMeals] Finished fetching. Total meals: ${allMeals.length}`);
     
-    // Nếu không có data từ backend, dùng mock data
+    // Nếu không có data, trả về mảng rỗng
     if (allMeals.length === 0) {
-      console.warn('[searchMeals] No meals from API, using mock data');
-      return getMockMeals({ searchText, ingredients });
-    }
-
-    // Filter theo searchText - tìm kiếm theo chữ cái đầu và prefix của tên món ăn
-    if (searchText && searchText.trim()) {
-      const searchLower = searchText.toLowerCase().trim();
-      const searchWithoutTones = removeVietnameseTones(searchLower);
-      const searchTerms = searchLower.split(/\s+/).filter(term => term.length > 0);
-      const searchTermsWithoutTones = searchWithoutTones.split(/\s+/).filter(term => term.length > 0);
-      
-      // Thêm điểm ưu tiên cho mỗi meal để sắp xếp kết quả
-      const mealsWithScore = allMeals.map(meal => {
-        const mealTitle = meal.title || meal.name || '';
-        // Loại bỏ ký tự đặc biệt và format lại title
-        const titleCleaned = mealTitle.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-        const titleLower = titleCleaned.toLowerCase();
-        const titleWithoutTones = removeVietnameseTones(titleLower);
-        
-        // Tách title thành các từ riêng biệt
-        const titleWords = titleLower.split(/\s+/).filter(w => w.length > 0);
-        const titleWordsWithoutTones = titleWithoutTones.split(/\s+/).filter(w => w.length > 0);
-        
-        let score = 0; // Điểm ưu tiên (cao hơn = ưu tiên hơn)
-        let matches = false;
-        
-        // Tìm kiếm theo prefix (chữ cái đầu) của từng từ trong tên món
-        if (searchTerms.length === 1) {
-          const searchTerm = searchTerms[0];
-          const searchTermWithoutTones = searchTermsWithoutTones[0];
-          
-          // Nếu searchTerm ngắn (1-2 ký tự), chỉ match từ đầu tiên để tránh kết quả không chính xác
-          const isShortSearch = searchTerm.length <= 2;
-          
-          if (isShortSearch) {
-            // Chỉ match từ đầu tiên của title (chữ cái đầu)
-            if (titleWords[0] && titleWords[0].startsWith(searchTerm)) {
-              score = 100;
-              matches = true;
-            } else if (titleWordsWithoutTones[0] && titleWordsWithoutTones[0].startsWith(searchTermWithoutTones)) {
-              score = 95;
-              matches = true;
-            }
-            // Không match contains cho short search để tránh kết quả sai (ví dụ: "c" không match "bánh mì")
-          } else {
-            // Search term dài hơn (>= 3 ký tự): match từ đầu tiên (ưu tiên cao nhất)
-            if (titleWords[0] && titleWords[0].startsWith(searchTerm)) {
-              score = 100;
-              matches = true;
-            } else if (titleWordsWithoutTones[0] && titleWordsWithoutTones[0].startsWith(searchTermWithoutTones)) {
-              score = 95;
-              matches = true;
-            }
-            // Match từ bất kỳ trong title (ưu tiên thấp hơn)
-            else if (titleWords.some(word => word.startsWith(searchTerm))) {
-              score = 80;
-              matches = true;
-            } else if (titleWordsWithoutTones.some(word => word.startsWith(searchTermWithoutTones))) {
-              score = 75;
-              matches = true;
-            }
-            // Match contains chỉ khi search term đủ dài (>= 3 ký tự)
-            else if (titleLower.includes(searchTerm)) {
-              score = 50;
-              matches = true;
-            } else if (titleWithoutTones.includes(searchTermWithoutTones)) {
-              score = 45;
-              matches = true;
-            }
-          }
-        } else {
-          // Nhiều từ: kiểm tra tất cả các từ phải match
-          let allMatch = true;
-          let prefixMatchCount = 0;
-          
-          for (let i = 0; i < searchTerms.length; i++) {
-            const term = searchTerms[i];
-            const termWithoutTones = searchTermsWithoutTones[i];
-            
-            // Kiểm tra prefix match
-            const prefixMatch = titleWords.some(word => word.startsWith(term)) ||
-                               titleWordsWithoutTones.some(word => word.startsWith(termWithoutTones));
-            
-            // Kiểm tra contains match
-            const containsMatch = titleLower.includes(term) ||
-                                 titleWithoutTones.includes(termWithoutTones);
-            
-            if (prefixMatch) {
-              prefixMatchCount++;
-            } else if (!containsMatch) {
-              allMatch = false;
-              break;
-            }
-          }
-          
-          if (allMatch) {
-            matches = true;
-            // Điểm dựa trên số lượng prefix matches
-            score = 60 + (prefixMatchCount * 10);
-          }
-        }
-        
-        return { meal, score, matches };
-      });
-      
-      // Lọc chỉ những meals match và sắp xếp theo điểm ưu tiên
-      allMeals = mealsWithScore
-        .filter(item => item.matches)
-        .sort((a, b) => b.score - a.score) // Sắp xếp giảm dần theo điểm
-        .map(item => item.meal);
+      console.warn('[searchMeals] No meals from API, returning empty array');
+      return [];
     }
 
     // Filter theo ingredients (tags) - tìm trong tag array của meal
+    // Chỉ filter ingredients nếu có ingredients được chọn
+    // (searchText đã được xử lý bởi API searchmeal)
     if (ingredients && ingredients.length > 0) {
       allMeals = allMeals.filter(meal => {
         // Lấy tags từ meal (có thể là tag hoặc mealIngredients)
@@ -462,69 +697,9 @@ export async function searchMeals({ searchText = '', ingredients = [] }) {
     return allMeals;
   } catch (error) {
     console.error('Error searching meals:', error);
-    // Nếu lỗi, fallback về mock data để test UI
-    return getMockMeals({ searchText, ingredients });
+    // Nếu lỗi, trả về mảng rỗng
+    return [];
   }
-}
-
-/**
- * Mock data để test UI khi backend chưa sẵn sàng
- * TODO: Xóa function này khi backend API đã hoàn thiện
- */
-function getMockMeals({ searchText = '', ingredients = [] }) {
-  // Mock database meals
-  const allMeals = [
-    { id: '1', title: 'BÁNH MÌ TRỨNG\n+ PATE + RAU', desc: 'Bánh mì, trứng gà, pate, rau', time: '5 phút', mealIngredients: ['Trứng gà', 'Rau củ'] },
-    { id: '2', title: 'CƠM GÀ NGŨ VỊ', desc: 'Cơm, thịt gà, rau củ', time: '20 phút', mealIngredients: ['Thịt gà', 'Rau củ'] },
-    { id: '3', title: 'BÚN THỊT NƯỚNG', desc: 'Bún, thịt heo, rau sống', time: '25 phút', mealIngredients: ['Thịt heo', 'Rau củ'] },
-    { id: '4', title: 'CÁ LÓC KHO TỘ', desc: 'Cá lóc, nước mắm, đường', time: '30 phút', mealIngredients: ['Cá lóc'] },
-    { id: '5', title: 'TÔM RANG ME', desc: 'Tôm, me, ớt', time: '15 phút', mealIngredients: ['Tôm'] },
-    { id: '6', title: 'MỰC XÀO CHUA NGỌT', desc: 'Mực, cà chua, dứa', time: '20 phút', mealIngredients: ['Mực'] },
-    { id: '7', title: 'SƯỜN HEO KHO', desc: 'Sườn heo, nước mắm', time: '45 phút', mealIngredients: ['Sườn heo'] },
-    { id: '8', title: 'CƠM THỊT BÒ XÀO', desc: 'Cơm, thịt bò, rau', time: '18 phút', mealIngredients: ['Thịt bò', 'Rau củ'] },
-    { id: '9', title: 'ĐẬU HŨ CHIÊN', desc: 'Đậu hũ, nước mắm, hành lá', time: '10 phút', mealIngredients: ['Đậu hũ'] },
-    { id: '10', title: 'TRỨNG VỊT LỘN', desc: 'Trứng vịt, rau răm', time: '15 phút', mealIngredients: ['Trứng vịt'] },
-  ];
-
-  // Lọc theo search text - tìm kiếm trong tên món, mô tả, và nguyên liệu
-  let filtered = allMeals;
-  if (searchText && searchText.trim()) {
-    const searchLower = searchText.toLowerCase().trim();
-    const searchTerms = searchLower.split(/\s+/).filter(term => term.length > 0);
-    
-    filtered = filtered.filter(meal => {
-      const titleLower = (meal.title || '').toLowerCase().replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-      const descLower = (meal.desc || '').toLowerCase();
-      const ingredientNames = (meal.mealIngredients || []).join(' ').toLowerCase();
-      
-      const searchTextCombined = `${titleLower} ${descLower} ${ingredientNames}`;
-      
-      if (searchTerms.length === 1) {
-        // Tìm kiếm một từ - tìm trong tên, mô tả, hoặc nguyên liệu
-        return titleLower.includes(searchTerms[0]) || 
-               descLower.includes(searchTerms[0]) || 
-               ingredientNames.includes(searchTerms[0]);
-      } else {
-        // Tìm kiếm nhiều từ - tất cả các từ phải có trong text
-        return searchTerms.every(term => searchTextCombined.includes(term));
-      }
-    });
-  }
-
-  // Lọc theo ingredients được chọn
-  if (ingredients && ingredients.length > 0) {
-    filtered = filtered.filter(meal => {
-      // Kiểm tra nếu ít nhất một nguyên liệu được chọn có trong mealIngredients
-      return ingredients.some(selectedIng => 
-        meal.mealIngredients.some(mealIng => 
-          mealIng.toLowerCase().includes(selectedIng.toLowerCase()) ||
-          selectedIng.toLowerCase().includes(mealIng.toLowerCase())
-        )
-      );
-    });
-  }
-
-  return filtered;
 }
 
 /**
@@ -534,7 +709,7 @@ function getMockMeals({ searchText = '', ingredients = [] }) {
 export async function getLatestMealPlan() {
   try {
     const headers = await getAuthHeaders();
-    const url = `${BASE_URL}/meals/recommendation/latest`;
+    const url = `${BASE_URL}/meal/recommendation/latest`;
     
     const response = await fetch(url, {
       method: 'GET',
@@ -778,4 +953,373 @@ export async function analyzeIngredientsFromImage({ imageUri, userId, heightCm, 
     console.error('[analyzeIngredientsFromImage] Error:', error?.message || error);
     throw error;
   }
+}
+
+// ==================== SAVED MEALS APIs ====================
+
+/**
+ * Lưu hoặc cập nhật ghi chú cho một món ăn của user hiện tại
+ * @param {Object} params - Tham số
+ * @param {string} params.mealId - ID của món ăn
+ * @param {string} params.note - Ghi chú (optional)
+ * @param {Array<string>} params.tags - Tags (optional)
+ * @returns {Promise<Object>} Saved meal object từ server
+ */
+export async function saveMealToServer({ mealId, note = '', tags = [] }) {
+  return callWithAutoRefresh(async () => {
+    // Xóa cache liên quan
+    clearCache('getSavedMealsFromServer');
+    
+    try {
+      const headers = await getAuthHeaders();
+      const url = `${BASE_URL}/meal/saved`;
+      
+      const payload = {
+        mealId,
+        note: note || '',
+        tags: tags || [],
+      };
+      
+      console.log('[saveMealToServer] Saving meal:', payload);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      
+      if (!response.ok) {
+        if (response.status === 400) {
+          const errorData = await handleJson(response);
+          throw new Error(errorData?.message || 'Thiếu hoặc sai mealId');
+        }
+        if (response.status === 401) {
+          throw new Error('401 Unauthorized');
+        }
+        if (response.status === 404) {
+          throw new Error('Không tìm thấy món ăn');
+        }
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      const result = await handleJson(response);
+      
+      // Transform meal từ backend format sang frontend format
+      if (result.data && result.data.meal) {
+        result.data.meal = transformMealFromBackend(result.data.meal);
+      }
+      
+      console.log('[saveMealToServer] Success:', result);
+      return result.data;
+    } catch (error) {
+      console.error('[saveMealToServer] Error:', error.message);
+      throw error;
+    }
+  });
+}
+
+/**
+ * Lấy danh sách món ăn đã lưu theo user
+ * @param {Object} params - Tham số
+ * @param {number} params.page - Số trang (mặc định 1)
+ * @param {number} params.limit - Số items mỗi trang (mặc định 20)
+ * @param {boolean} params.forceRefresh - Bỏ qua cache nếu true
+ * @returns {Promise<Object>} Response với data và pagination
+ */
+export async function getSavedMealsFromServer({ page = 1, limit = 20, forceRefresh = false } = {}) {
+  const cacheKey = getCacheKey('getSavedMealsFromServer', { page, limit });
+  
+  // Kiểm tra cache trước
+  if (!forceRefresh) {
+    const cached = getFromCache(cacheKey);
+    if (cached) {
+      console.log(`[getSavedMealsFromServer] Using cache for page ${page}`);
+      return cached;
+    }
+  }
+  
+  return callWithAutoRefresh(async () => {
+    return deduplicateRequest(cacheKey, async () => {
+      try {
+        const headers = await getAuthHeaders();
+      
+      const queryParams = new URLSearchParams();
+      queryParams.append('page', page.toString());
+      queryParams.append('limit', limit.toString());
+      
+      const url = `${BASE_URL}/meal/saved?${queryParams.toString()}`;
+      
+      console.log('[getSavedMealsFromServer] Fetching:', url);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+      });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('401 Unauthorized');
+        }
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      const result = await handleJson(response);
+      
+      // Transform meals từ backend format sang frontend format
+      if (result.data && Array.isArray(result.data)) {
+        result.data = result.data.map(item => {
+          if (item.meal) {
+            item.meal = transformMealFromBackend(item.meal);
+          }
+          return item;
+        });
+      }
+      
+      console.log('[getSavedMealsFromServer] Success:', {
+        count: result.data?.length || 0,
+        pagination: result.pagination,
+      });
+      
+      // Lưu vào cache
+      setCache(cacheKey, result);
+      
+      return result;
+      } catch (error) {
+        console.error('[getSavedMealsFromServer] Error:', error.message);
+        throw error;
+      }
+    });
+  });
+}
+
+/**
+ * Xóa món ăn đã lưu của user
+ * @param {string} mealId - ID của món ăn cần xóa
+ * @returns {Promise<boolean>} true nếu xóa thành công
+ */
+export async function deleteSavedMealFromServer(mealId) {
+  return callWithAutoRefresh(async () => {
+    // Xóa cache liên quan
+    clearCache('getSavedMealsFromServer');
+    
+    try {
+      const headers = await getAuthHeaders();
+      const url = `${BASE_URL}/meal/saved/${mealId}`;
+      
+      console.log('[deleteSavedMealFromServer] Deleting meal:', mealId);
+      
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers,
+      });
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Không có món ăn này trong danh sách lưu');
+        }
+        if (response.status === 401) {
+          throw new Error('401 Unauthorized');
+        }
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      console.log('[deleteSavedMealFromServer] Success');
+      return true;
+    } catch (error) {
+      console.error('[deleteSavedMealFromServer] Error:', error.message);
+      throw error;
+    }
+  });
+}
+
+// ==================== MEAL LOGS APIs ====================
+
+/**
+ * Ghi lại một bữa ăn trong nhật ký cá nhân
+ * @param {Object} params - Tham số
+ * @param {string} params.mealId - ID của món ăn
+ * @param {string} params.mealTime - Buổi ăn ('breakfast', 'lunch', 'dinner')
+ * @param {string} params.date - Ngày (format: 'YYYY-MM-DD')
+ * @param {number} params.portion - Phần ăn (mặc định 1)
+ * @param {string} params.note - Ghi chú (optional)
+ * @param {number} params.caloriesOverride - Calories override (optional)
+ * @returns {Promise<Object>} Meal log object từ server
+ */
+export async function logMealToServer({ mealId, mealTime, date, portion = 1, note = '', caloriesOverride = 0 }) {
+  return callWithAutoRefresh(async () => {
+    // Xóa cache liên quan
+    clearCache('getMealLogsFromServer');
+    
+    try {
+      const headers = await getAuthHeaders();
+      const url = `${BASE_URL}/meal/logs`;
+      
+      const payload = {
+        mealId,
+        mealTime,
+        date,
+        portion: portion || 1,
+        note: note || '',
+        caloriesOverride: caloriesOverride || 0,
+      };
+      
+      console.log('[logMealToServer] Logging meal:', payload);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('401 Unauthorized');
+        }
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      const result = await handleJson(response);
+      
+      // Transform meal từ backend format sang frontend format
+      if (result.data && result.data.meal) {
+        result.data.meal = transformMealFromBackend(result.data.meal);
+      }
+      
+      console.log('[logMealToServer] Success:', result);
+      return result.data;
+    } catch (error) {
+      console.error('[logMealToServer] Error:', error.message);
+      throw error;
+    }
+  });
+}
+
+/**
+ * Lấy nhật ký bữa ăn theo khoảng ngày
+ * @param {Object} params - Tham số
+ * @param {string} params.startDate - Ngày bắt đầu (format: 'YYYY-MM-DD')
+ * @param {string} params.endDate - Ngày kết thúc (format: 'YYYY-MM-DD')
+ * @param {boolean} params.forceRefresh - Bỏ qua cache nếu true
+ * @returns {Promise<Object>} Nhật ký theo ngày, format: { 'YYYY-MM-DD': { breakfast: [], lunch: [], dinner: [] } }
+ */
+export async function getMealLogsFromServer({ startDate, endDate, forceRefresh = false }) {
+  const cacheKey = getCacheKey('getMealLogsFromServer', { startDate, endDate });
+  
+  // Kiểm tra cache trước
+  if (!forceRefresh) {
+    const cached = getFromCache(cacheKey);
+    if (cached) {
+      console.log(`[getMealLogsFromServer] Using cache for ${startDate} to ${endDate}`);
+      return cached;
+    }
+  }
+  
+  return callWithAutoRefresh(async () => {
+    return deduplicateRequest(cacheKey, async () => {
+      try {
+        const headers = await getAuthHeaders();
+      
+      const queryParams = new URLSearchParams();
+      if (startDate) queryParams.append('startDate', startDate);
+      if (endDate) queryParams.append('endDate', endDate);
+      
+      const url = `${BASE_URL}/meal/logs?${queryParams.toString()}`;
+      
+      console.log('[getMealLogsFromServer] Fetching:', url);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+      });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('401 Unauthorized');
+        }
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      const result = await handleJson(response);
+      
+      // Transform meals trong logs từ backend format sang frontend format
+      if (result.data && typeof result.data === 'object') {
+        Object.keys(result.data).forEach(dateKey => {
+          const dayLogs = result.data[dateKey];
+          if (dayLogs && typeof dayLogs === 'object') {
+            ['breakfast', 'lunch', 'dinner'].forEach(mealTime => {
+              if (Array.isArray(dayLogs[mealTime])) {
+                dayLogs[mealTime] = dayLogs[mealTime].map(log => {
+                  if (log.meal) {
+                    log.meal = transformMealFromBackend(log.meal);
+                  }
+                  return log;
+                });
+              }
+            });
+          }
+        });
+      }
+      
+      console.log('[getMealLogsFromServer] Success:', {
+        dateCount: result.data ? Object.keys(result.data).length : 0,
+      });
+      
+      const resultData = result.data || {};
+      
+      // Lưu vào cache
+      setCache(cacheKey, resultData);
+      
+      return resultData;
+      } catch (error) {
+        console.error('[getMealLogsFromServer] Error:', error.message);
+        throw error;
+      }
+    });
+  });
+}
+
+/**
+ * Xóa một bản ghi bữa ăn theo id
+ * @param {string} logId - ID của bản ghi cần xóa
+ * @returns {Promise<boolean>} true nếu xóa thành công
+ */
+export async function deleteMealLogFromServer(logId) {
+  return callWithAutoRefresh(async () => {
+    // Xóa cache liên quan
+    clearCache('getMealLogsFromServer');
+    
+    try {
+      const headers = await getAuthHeaders();
+      const url = `${BASE_URL}/meal/logs/${logId}`;
+      
+      console.log('[deleteMealLogFromServer] Deleting log:', logId);
+      
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers,
+      });
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Không tìm thấy bản ghi');
+        }
+        if (response.status === 401) {
+          throw new Error('401 Unauthorized');
+        }
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      console.log('[deleteMealLogFromServer] Success');
+      return true;
+    } catch (error) {
+      console.error('[deleteMealLogFromServer] Error:', error.message);
+      throw error;
+    }
+  });
 }

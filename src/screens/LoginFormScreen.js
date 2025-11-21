@@ -1,12 +1,13 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { login } from '../api/auth';
+import { login, getProfile } from '../api/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pushLocalNotification } from '../utils/notifications';
 import { usePremium } from '../context/PremiumContext';
+import { setCurrentUserId, getCurrentUserId } from '../utils/userSession';
 
 export default function LoginFormScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -16,17 +17,41 @@ export default function LoginFormScreen({ navigation }) {
   const [errors, setErrors] = React.useState({ username: '', password: '' });
   const [submitting, setSubmitting] = React.useState(false);
   const [showPassword, setShowPassword] = React.useState(false);
+  const scrollViewRef = React.useRef(null);
+  const usernameInputRef = React.useRef(null);
+  const passwordInputRef = React.useRef(null);
+  
+  // Xử lý khi keyboard hiện/ẩn để scroll về vị trí ban đầu
+  React.useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
+      // Keyboard đã hiện, không cần làm gì vì onFocus sẽ xử lý scroll
+    });
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      // Khi keyboard ẩn, scroll về đầu trang
+      setTimeout(() => {
+        scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      }, 100);
+    });
+    
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
+  
   return (
     <SafeAreaView style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}> 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 40}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <ScrollView
+          ref={scrollViewRef}
           style={{ flex: 1 }}
           contentContainerStyle={styles.card}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color="#1F1F1F" />
@@ -42,6 +67,7 @@ export default function LoginFormScreen({ navigation }) {
         <View style={[styles.inputWrap, errors.username && { borderColor: '#D93025', borderWidth: 1 }] }>
           <Ionicons name="person-outline" size={18} color="#8D8580" />
           <TextInput 
+            ref={usernameInputRef}
             placeholder="username" 
             style={styles.inputField} 
             value={usernameState} 
@@ -50,13 +76,52 @@ export default function LoginFormScreen({ navigation }) {
             autoCorrect={true}
             keyboardType="default"
             returnKeyType="next"
+            onFocus={() => {
+              // Scroll đến input khi focus để không bị keyboard che
+              setTimeout(() => {
+                usernameInputRef.current?.measureInWindow((x, y, width, height) => {
+                  const scrollY = y - 150; // Offset để input không bị che
+                  if (scrollY > 0) {
+                    scrollViewRef.current?.scrollTo({ y: scrollY, animated: true });
+                  }
+                });
+              }, 200);
+            }}
+            onSubmitEditing={() => {
+              // Chuyển focus sang password input
+              passwordInputRef.current?.focus();
+            }}
+            blurOnSubmit={false}
           />
         </View>
         {errors.username ? <Text style={styles.errorText}>{errors.username}</Text> : null}
         <Text style={styles.label}>Mật khẩu</Text>
         <View style={[styles.inputWrap, errors.password && { borderColor: '#D93025', borderWidth: 1 }] }>
           <Ionicons name="lock-closed-outline" size={18} color="#8D8580" />
-          <TextInput placeholder="123!@#" secureTextEntry={!showPassword} style={styles.inputField} value={passwordState} onChangeText={(t)=>{ setPasswordState(t); if (errors.password) setErrors((e)=>({...e, password: ''})); }} />
+          <TextInput 
+            ref={passwordInputRef}
+            placeholder="123!@#" 
+            secureTextEntry={!showPassword} 
+            style={styles.inputField} 
+            value={passwordState} 
+            onChangeText={(t)=>{ setPasswordState(t); if (errors.password) setErrors((e)=>({...e, password: ''})); }} 
+            onFocus={() => {
+              // Scroll đến input khi focus để không bị keyboard che
+              setTimeout(() => {
+                passwordInputRef.current?.measureInWindow((x, y, width, height) => {
+                  const scrollY = y - 150; // Offset để input không bị che
+                  if (scrollY > 0) {
+                    scrollViewRef.current?.scrollTo({ y: scrollY, animated: true });
+                  }
+                });
+              }, 200);
+            }}
+            onSubmitEditing={() => {
+              // Ẩn bàn phím khi bấm Enter
+              Keyboard.dismiss();
+            }}
+            returnKeyType="done"
+          />
           <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeButton}>
             <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#8D8580" />
           </TouchableOpacity>
@@ -77,11 +142,31 @@ export default function LoginFormScreen({ navigation }) {
             try {
               setSubmitting(true);
               const res = await login({ username, password });
+              
+              // Lấy oldUserId trước khi set userId mới để clear cache
+              const oldUserId = await getCurrentUserId();
+              
               if (res?.accessToken) {
                 await AsyncStorage.setItem('accessToken', res.accessToken);
               }
               if (res?.refreshToken) {
                 await AsyncStorage.setItem('refreshToken', res.refreshToken);
+              }
+              // Lấy profile để xác định userId hiện tại và lưu vào AsyncStorage
+              try {
+                const profile = await getProfile();
+                const userId =
+                  profile?.data?._id ||
+                  profile?.user?._id ||
+                  profile?._id ||
+                  profile?.data?.userId ||
+                  profile?.userId ||
+                  null;
+                // Truyền oldUserId để clear cache khi đổi user
+                await setCurrentUserId(userId, oldUserId);
+              } catch (profileError) {
+                console.warn('[LoginForm] Unable to fetch profile for userId:', profileError?.message || profileError);
+                await setCurrentUserId(null);
               }
               // Refresh premium status từ server sau khi đăng nhập thành công
               refreshPremiumStatus();

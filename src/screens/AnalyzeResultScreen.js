@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Dimensions, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSavedMeals } from '../context/SavedMealsContext';
@@ -294,16 +294,29 @@ export default function AnalyzeResultScreen() {
                         </View>
                       </View>
                       <View style={styles.recipeRight}>
+                        {/* Meal image from database */}
+                        {item.image && (
+                          <Image 
+                            source={{ uri: item.image }} 
+                            style={styles.recipeImage}
+                            resizeMode="cover"
+                          />
+                        )}
                         <TouchableOpacity
                           onPress={() => handleBookmarkPress(item, activeMealType)}
-                          activeOpacity={0.7}
-                          style={{ alignSelf: 'flex-end', margin: 10 }}
+                          activeOpacity={0.8}
+                          style={[
+                            styles.bookmarkButton,
+                            {
+                              backgroundColor: isSaved ? '#FAE2AF' : 'rgba(255, 255, 255, 0.95)',
+                              borderWidth: isSaved ? 0 : 1,
+                            }
+                          ]}
                         >
                           <Ionicons 
                             name={isSaved ? "bookmark" : "bookmark-outline"} 
-                            size={18} 
+                            size={22} 
                             color="#3C2C21" 
-                            style={{ opacity: isSaved ? 1 : 0.8 }} 
                           />
                         </TouchableOpacity>
                       </View>
@@ -383,6 +396,30 @@ const styles = StyleSheet.create({
   recipeRight: {
     width: 110,
     backgroundColor: '#EFD493',
+    position: 'relative',
+  },
+  recipeImage: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  bookmarkButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 10,
+    borderRadius: 20,
+    padding: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
+    borderColor: 'rgba(60, 44, 33, 0.2)',
   },
   recipeTitle: {
     color: '#3C2C21',

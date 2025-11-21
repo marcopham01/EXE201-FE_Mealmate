@@ -30,6 +30,21 @@ export default function AnalyzeScreen() {
   const weekLabels = ['T2','T3','T4','T5','T6','T7','CN'];
   const { selectedDayIdx, setSelectedDayIdx } = useWeek();
 
+  // Function để tính thứ 2 của tuần (week start date)
+  const getWeekStartDate = (date) => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    const dayIndex = (d.getDay() + 6) % 7; // 0 = Monday, 6 = Sunday
+    d.setDate(d.getDate() - dayIndex);
+    return d.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+  };
+
+  // Function để check xem có phải tuần mới không
+  const isNewWeek = (savedWeekStart, currentWeekStart) => {
+    if (!savedWeekStart) return true; // Chưa có data -> tuần mới
+    return savedWeekStart !== currentWeekStart;
+  };
+
   // Fetch meal plan khi màn hình focus
   useFocusEffect(
     React.useCallback(() => {
@@ -47,19 +62,83 @@ export default function AnalyzeScreen() {
         // Note: premiumActive có thể chưa cập nhật ngay sau refresh
         // nên chúng ta sẽ dựa vào kết quả từ API meal plan
         try {
-          // Load BMI profile (lưu từ onboarding)
-          const raw = await AsyncStorage.getItem('userProfileBMI');
-          const profile = raw ? JSON.parse(raw) : null;
-          setBmiProfile(profile);
-
-          // Thử lấy meal plan từ backend
+          const currentWeekStart = getWeekStartDate(now);
+          
+          // ƯU TIÊN: Lấy meal plan từ backend trước (đồng bộ giữa các thiết bị)
           const plan = await getLatestMealPlan();
-          if (plan) {
+          if (plan && plan.input) {
+            // Check xem recommendation có thuộc tuần hiện tại không
+            let planWeekStart = null;
+            if (plan.createdAt) {
+              planWeekStart = getWeekStartDate(new Date(plan.createdAt));
+            } else if (plan.updatedAt) {
+              planWeekStart = getWeekStartDate(new Date(plan.updatedAt));
+            }
+            
+            // Nếu recommendation không thuộc tuần hiện tại -> clear và yêu cầu tính lại
+            if (planWeekStart && planWeekStart !== currentWeekStart) {
+              console.log('New week detected - clearing old BMI and meal plan');
+              setMealPlan(null);
+              setBmiProfile(null);
+              try {
+                await AsyncStorage.removeItem('userProfileBMI');
+                await AsyncStorage.removeItem('mealPlanWeekStart');
+              } catch (e) {
+                // ignore storage error
+              }
+              setLoading(false);
+              return;
+            }
+            
+            // Có data từ server và thuộc tuần hiện tại -> dùng data từ server và cập nhật AsyncStorage
             setMealPlan(plan);
-          } else if (profile?.height && profile?.weight) {
-            // Nếu backend chưa có, gọi API gợi ý theo BMI nếu đã có profile
-            const mapActivity = (a) => {
-              const s = (a || '')
+            
+            // Cập nhật profile từ server data để đồng bộ
+            const serverProfile = {
+              height: plan.input.heightCm,
+              weight: plan.input.weightKg,
+              activity: plan.input.activityLevel,
+              goal: plan.input.goal,
+              bmi: plan.result?.bmi,
+              weekStartDate: currentWeekStart, // Lưu tuần hiện tại
+            };
+            setBmiProfile(serverProfile);
+            
+            // Lưu vào AsyncStorage để cache
+            try {
+              await AsyncStorage.setItem('userProfileBMI', JSON.stringify(serverProfile));
+              await AsyncStorage.setItem('mealPlanWeekStart', currentWeekStart);
+            } catch (e) {
+              // ignore storage error
+            }
+          } else {
+            // Không có data từ server -> fallback về AsyncStorage
+            const raw = await AsyncStorage.getItem('userProfileBMI');
+            const profile = raw ? JSON.parse(raw) : null;
+            
+            // Check xem có phải tuần mới không
+            if (profile && profile.weekStartDate) {
+              if (isNewWeek(profile.weekStartDate, currentWeekStart)) {
+                console.log('New week detected - clearing old BMI profile');
+                setMealPlan(null);
+                setBmiProfile(null);
+                try {
+                  await AsyncStorage.removeItem('userProfileBMI');
+                  await AsyncStorage.removeItem('mealPlanWeekStart');
+                } catch (e) {
+                  // ignore storage error
+                }
+                setLoading(false);
+                return;
+              }
+            }
+            
+            setBmiProfile(profile);
+            
+            if (profile?.height && profile?.weight) {
+              // Nếu backend chưa có, gọi API gợi ý theo BMI nếu đã có profile
+              const mapActivity = (a) => {
+                const s = (a || '')
                 .toString()
                 .replace(/\u00A0/g, ' ')
                 .trim()
@@ -68,51 +147,100 @@ export default function AnalyzeScreen() {
                 .replace(/[\u0300-\u036f]/g, '')
                 .replace(/[‘’'“”]/g, '')
                 .replace(/\s+/g, ' ');
-              if (s === 'low' || s.includes('it van dong') || s.includes('ít vận động')) return 'Ít vận động';
-              if (s === 'high' || s.includes('van dong nhieu') || s.includes('vận động nhiều')) return 'Vận động nhiều';
-              if (s === 'medium' || s.includes('van dong vua phai') || s.includes('vận động vừa phải')) return 'Vận động vừa phải';
-              return 'Vận động vừa phải';
-            };
-            const mapGoal = (g) => {
-              const s = (g || '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-              if (s === 'lose' || s.includes('giam')) return 'Giảm cân';
-              if (s === 'gain' || s.includes('tang')) return 'Tăng cân';
-              return 'Duy trì cân nặng';
-            };
-            const payload = {
-              heightCm: Number(profile.height),
-              weightKg: Number(profile.weight),
-              activityLevel: mapActivity(profile.activity),
-              goal: mapGoal(profile.goal),
-            };
-            const data = await recommendMealsByBMI(payload);
-            if (data) {
-              // Chuẩn hóa về shape cũ { result: { calorieTarget, breakdown } }
-              setMealPlan({
-                result: {
-                  calorieTarget: data.calorieTarget,
-                  breakdown: data.breakdown || { breakfast: 0, lunch: 0, dinner: 0 },
+                if (s === 'low' || s.includes('it van dong') || s.includes('ít vận động')) return 'Ít vận động';
+                if (s === 'high' || s.includes('van dong nhieu') || s.includes('vận động nhiều')) return 'Vận động nhiều';
+                if (s === 'medium' || s.includes('van dong vua phai') || s.includes('vận động vừa phải')) return 'Vận động vừa phải';
+                return 'Vận động vừa phải';
+              };
+              const mapGoal = (g) => {
+                const s = (g || '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                if (s === 'lose' || s.includes('giam')) return 'Giảm cân';
+                if (s === 'gain' || s.includes('tang')) return 'Tăng cân';
+                return 'Duy trì cân nặng';
+              };
+              const payload = {
+                heightCm: Number(profile.height),
+                weightKg: Number(profile.weight),
+                activityLevel: mapActivity(profile.activity),
+                goal: mapGoal(profile.goal),
+              };
+              const data = await recommendMealsByBMI(payload);
+              if (data) {
+                // Chuẩn hóa về shape cũ { result: { calorieTarget, breakdown } }
+                setMealPlan({
+                  result: {
+                    calorieTarget: data.calorieTarget,
+                    breakdown: data.breakdown || { breakfast: 0, lunch: 0, dinner: 0 },
+                    bmi: data.bmi,
+                    bmiClass: data.bmiClass,
+                    selected: data.meals || {},
+                  },
+                });
+                
+                // Cập nhật profile với weekStartDate
+                const updatedProfile = {
+                  ...profile,
+                  weekStartDate: currentWeekStart,
                   bmi: data.bmi,
-                  bmiClass: data.bmiClass,
-                  selected: data.meals || {},
-                },
-              });
+                };
+                setBmiProfile(updatedProfile);
+                
+                // Lưu vào AsyncStorage
+                try {
+                  await AsyncStorage.setItem('userProfileBMI', JSON.stringify(updatedProfile));
+                  await AsyncStorage.setItem('mealPlanWeekStart', currentWeekStart);
+                } catch (e) {
+                  // ignore storage error
+                }
+              } else {
+                // Fallback local khi API không trả về
+                const generated = await generateWeeklyPlan(profile);
+                setMealPlan(generated);
+                
+                // Vẫn lưu weekStartDate cho profile
+                const updatedProfile = {
+                  ...profile,
+                  weekStartDate: currentWeekStart,
+                };
+                setBmiProfile(updatedProfile);
+                try {
+                  await AsyncStorage.setItem('userProfileBMI', JSON.stringify(updatedProfile));
+                  await AsyncStorage.setItem('mealPlanWeekStart', currentWeekStart);
+                } catch (e) {
+                  // ignore storage error
+                }
+              }
             } else {
-              // Fallback local khi API không trả về
+              // Không có profile -> fallback local nhẹ
               const generated = await generateWeeklyPlan(profile);
               setMealPlan(generated);
             }
-          } else {
-            // Không có profile -> fallback local nhẹ
-            const generated = await generateWeeklyPlan(profile);
-            setMealPlan(generated);
           }
           setLoading(false);
         } catch (error) {
           console.error('Error fetching meal plan:', error);
           try {
+            const currentWeekStart = getWeekStartDate(new Date());
             const raw = await AsyncStorage.getItem('userProfileBMI');
             const profile = raw ? JSON.parse(raw) : null;
+            
+            // Check xem có phải tuần mới không
+            if (profile && profile.weekStartDate) {
+              if (isNewWeek(profile.weekStartDate, currentWeekStart)) {
+                console.log('New week detected in error handler - clearing old BMI profile');
+                setMealPlan(null);
+                setBmiProfile(null);
+                try {
+                  await AsyncStorage.removeItem('userProfileBMI');
+                  await AsyncStorage.removeItem('mealPlanWeekStart');
+                } catch (e) {
+                  // ignore storage error
+                }
+                setLoading(false);
+                return;
+              }
+            }
+            
             setBmiProfile(profile);
             const generated = await generateWeeklyPlan(profile);
             setMealPlan(generated);

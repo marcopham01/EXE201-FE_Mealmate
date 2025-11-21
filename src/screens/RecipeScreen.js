@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Image } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
@@ -32,17 +32,30 @@ function RecipeCard({ meal, mealTimeIndex, onBookmarkPress, onAddPress, onRemove
           <Text style={styles.recipeTime}>Thời gian: {meal.time}</Text>
         </View>
         <View style={styles.recipeRight}>
+          {/* Meal image from database */}
+          {meal.image && (
+            <Image 
+              source={{ uri: meal.image }} 
+              style={styles.recipeImage}
+              resizeMode="cover"
+            />
+          )}
           {/* Save (bookmark) always visible */}
           <TouchableOpacity
             onPress={() => onBookmarkPress && onBookmarkPress(meal)}
-            activeOpacity={0.7}
-            style={{ alignSelf: 'flex-end', margin: 10 }}
+            activeOpacity={0.8}
+            style={[
+              styles.bookmarkButton,
+              {
+                backgroundColor: isSaved ? '#FAE2AF' : 'rgba(255, 255, 255, 0.95)',
+                borderWidth: isSaved ? 0 : 1,
+              }
+            ]}
           >
             <Ionicons 
               name={isSaved ? "bookmark" : "bookmark-outline"} 
-              size={18} 
+              size={22} 
               color="#3C2C21" 
-              style={{ opacity: isSaved ? 1 : 0.8 }} 
             />
           </TouchableOpacity>
           {/* Optional Remove if in selection mode and this meal is selected */}
@@ -50,7 +63,7 @@ function RecipeCard({ meal, mealTimeIndex, onBookmarkPress, onAddPress, onRemove
             <TouchableOpacity
               onPress={() => onRemovePress && onRemovePress(meal)}
               activeOpacity={0.85}
-              style={{ position: 'absolute', top: 6, right: 8, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 6, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 3 }}
+              style={{ position: 'absolute', top: 6, right: 8, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 6, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 3, zIndex: 10 }}
             >
               <Ionicons name="remove" size={16} color="#B00020" />
             </TouchableOpacity>
@@ -59,7 +72,7 @@ function RecipeCard({ meal, mealTimeIndex, onBookmarkPress, onAddPress, onRemove
           <TouchableOpacity
             onPress={() => onAddPress && onAddPress(meal)}
             activeOpacity={0.9}
-            style={{ alignSelf: 'center', marginTop: 'auto', marginBottom: 12, backgroundColor: selectionMode ? '#3C2C21' : '#FFFFFF', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: selectionMode ? 0 : 0.1, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: selectionMode ? 0 : 3 }}
+            style={{ position: 'absolute', bottom: 12, alignSelf: 'center', backgroundColor: selectionMode ? '#3C2C21' : '#FFFFFF', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: selectionMode ? 0 : 0.1, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: selectionMode ? 0 : 3, zIndex: 10 }}
           >
             <Ionicons name="add" size={16} color={selectionMode ? '#FAE2AF' : '#3C2C21'} />
             <Text style={{ marginLeft: 6, color: selectionMode ? '#FAE2AF' : '#3C2C21', fontWeight: '900', fontSize: 12 }}>{selectionMode ? 'THÊM' : 'Thêm'}</Text>
@@ -496,7 +509,22 @@ const styles = StyleSheet.create({
   // Recipe cards
   recipeShadow: { borderRadius: 16, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3, marginBottom: 12 },
   recipeCard: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderRadius: 16, overflow: 'hidden' },
-  recipeRight: { width: 110, backgroundColor: '#EFD493' },
+  recipeRight: { width: 110, backgroundColor: '#EFD493', position: 'relative' },
+  recipeImage: { width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  bookmarkButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 10,
+    borderRadius: 20,
+    padding: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
+    borderColor: 'rgba(60, 44, 33, 0.2)',
+  },
   recipeTitle: { color: '#3C2C21', fontWeight: '900', fontSize: 18, lineHeight: 22 },
   recipeDesc: { color: '#8E7F73', marginTop: 6 },
   recipeTime: { color: '#9A8A7B', marginTop: 10, fontWeight: '800' },

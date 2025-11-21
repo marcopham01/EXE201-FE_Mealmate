@@ -5,6 +5,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { deleteAccount } from '../api/auth';
 import { useNotifications } from '../context/NotificationContext';
+import { setCurrentUserId } from '../utils/userSession';
 
 export default function SettingScreen({ navigation }) {
   const { notificationsEnabled, setNotificationsEnabled } = useNotifications();
@@ -47,7 +48,9 @@ export default function SettingScreen({ navigation }) {
           style={[styles.item, styles.logoutItem]}
           onPress={async () => {
             await AsyncStorage.removeItem('accessToken');
+            await AsyncStorage.removeItem('refreshToken');
             await AsyncStorage.removeItem('premiumActive');
+            await setCurrentUserId(null);
             navigation.reset({ index: 0, routes: [{ name: 'LoginLanding' }] });
           }}
         >
@@ -69,7 +72,9 @@ export default function SettingScreen({ navigation }) {
                     try {
                       await deleteAccount();
                       await AsyncStorage.removeItem('accessToken');
+                      await AsyncStorage.removeItem('refreshToken');
                       await AsyncStorage.removeItem('premiumActive');
+                      await setCurrentUserId(null);
                       Alert.alert('Đã xóa tài khoản');
                       navigation.reset({ index: 0, routes: [{ name: 'LoginLanding' }] });
                     } catch (e) {

@@ -1,5 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { getPaymentHistory, verifyPayment, normalizeIsPaid } from '../api/payment';
 import { getProfile } from '../api/auth';
@@ -208,18 +210,71 @@ export default function PaymentWebScreen({ route, navigation }) {
   };
 
   return (
-    <View style={styles.container}>
-      <ActivityIndicator size="large" color="#6B5B4A" />
-      <Text style={{ marginTop: 12, color: '#6B5B4A' }}>Đang mở trang thanh toán...</Text>
-      <TouchableOpacity onPress={checkStatus} disabled={checking} style={[styles.checkBtn, checking && { opacity: 0.6 }] }>
-        <Text style={styles.checkText}>{checking ? 'Đang kiểm tra...' : 'Tôi đã thanh toán xong - Kiểm tra lại'}</Text>
+    <SafeAreaView style={styles.container}>
+      {/* Nút back về PremiumScreen */}
+      <TouchableOpacity 
+        style={styles.backButton}
+        onPress={() => navigation.goBack()}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="arrow-back" size={24} color="#3C2C21" />
       </TouchableOpacity>
-    </View>
+      
+      <View style={styles.content}>
+        <ActivityIndicator size="large" color="#6B5B4A" />
+        <Text style={styles.loadingText}>Đang mở trang thanh toán...</Text>
+        <TouchableOpacity 
+          onPress={checkStatus} 
+          disabled={checking} 
+          style={[styles.checkBtn, checking && { opacity: 0.6 }]}
+        >
+          <Text style={styles.checkText}>
+            {checking ? 'Đang kiểm tra...' : 'Tôi đã thanh toán xong - Kiểm tra lại'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
-  checkBtn: { marginTop: 20, backgroundColor: '#F1CF82', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12 },
-  checkText: { color: '#3C2C21', fontWeight: '900' },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#FFF' 
+  },
+  backButton: {
+    position: 'absolute',
+    top: 10,
+    left: 16,
+    zIndex: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 20,
+    padding: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  content: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    color: '#6B5B4A',
+    fontSize: 16,
+  },
+  checkBtn: { 
+    marginTop: 20, 
+    backgroundColor: '#F1CF82', 
+    paddingHorizontal: 16, 
+    paddingVertical: 12, 
+    borderRadius: 12 
+  },
+  checkText: { 
+    color: '#3C2C21', 
+    fontWeight: '900' 
+  },
 });
