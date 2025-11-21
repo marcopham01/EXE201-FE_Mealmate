@@ -65,10 +65,12 @@ export default function PaymentWebScreen({ route, navigation }) {
           const vr = await verifyPayment({ orderCode }, tk);
           console.log('[PaymentCheck] verifyPayment response', vr);
           if (normalizeIsPaid(vr) || ['paid','success','succeeded','completed','complete'].includes(String(vr?.status).toLowerCase())) {
+            // Đợi một chút để backend kịp update
+            await delay(1000);
             // Đợi refresh premium status từ server để đảm bảo backend đã update
             await refreshPremiumStatus();
-            // Set premium active sau khi refresh để đảm bảo UI cập nhật
-            setPremiumActive(true);
+            // Đợi thêm một chút nữa để đảm bảo state được cập nhật
+            await delay(500);
             setShowSuccessModal(true);
             return;
           }
@@ -157,10 +159,12 @@ export default function PaymentWebScreen({ route, navigation }) {
       }
 
       if (paidOk) {
+        // Đợi một chút để backend kịp update
+        await delay(1000);
         // Đợi refresh premium status từ server để đảm bảo backend đã update
         await refreshPremiumStatus();
-        // Set premium active sau khi refresh để đảm bảo UI cập nhật
-        setPremiumActive(true);
+        // Đợi thêm một chút nữa để đảm bảo state được cập nhật
+        await delay(500);
         setShowSuccessModal(true);
         return;
       } else {
@@ -182,10 +186,12 @@ export default function PaymentWebScreen({ route, navigation }) {
           const notExpired = expires ? new Date(expires).getTime() > Date.now() : false;
           console.log('[PaymentCheck] Profile premium', { active, expires });
           if (active && notExpired) {
+            // Đợi một chút để backend kịp update
+            await delay(1000);
             // Đợi refresh premium status từ server để đảm bảo backend đã update
             await refreshPremiumStatus();
-            // Set premium active sau khi refresh để đảm bảo UI cập nhật
-            setPremiumActive(true);
+            // Đợi thêm một chút nữa để đảm bảo state được cập nhật
+            await delay(500);
             setShowSuccessModal(true);
             return;
           }
@@ -205,8 +211,12 @@ export default function PaymentWebScreen({ route, navigation }) {
     }
   };
 
-  const handleSuccessModalClose = () => {
+  const handleSuccessModalClose = async () => {
     setShowSuccessModal(false);
+    // Đợi thêm một chút để đảm bảo backend đã update hoàn toàn
+    await new Promise(resolve => setTimeout(resolve, 500));
+    // Refresh lại premium status một lần nữa trước khi navigate
+    await refreshPremiumStatus();
     // Navigate tới onboarding để nhập thông tin BMI
     navigation.reset({ index: 0, routes: [{ name: 'OnboardingGoal' }] });
   };

@@ -1,8 +1,19 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { usePremium } from '../context/PremiumContext';
 
 export default function OnboardingGoalScreen({ navigation }) {
   const [goal, setGoal] = React.useState(null);
+  const { refreshPremiumStatus } = usePremium();
+
+  // Refresh premium status khi màn hình được focus (đặc biệt sau khi thanh toán)
+  useFocusEffect(
+    React.useCallback(() => {
+      // Refresh premium status để đảm bảo có premium sau khi thanh toán
+      refreshPremiumStatus();
+    }, [refreshPremiumStatus])
+  );
 
   const next = () => {
     navigation.navigate('OnboardingActivity', { goal });

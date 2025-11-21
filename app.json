@@ -28,10 +28,16 @@
       "permissions": [
         "CAMERA",
         "READ_MEDIA_IMAGES"
-      ]
+      ],
+      "package": "com.longng.MealMate"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7a4d08b6-90e5-4198-bc01-2c8b521c6f01"
+      }
     }
   }
 }
