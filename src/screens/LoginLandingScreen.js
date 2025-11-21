@@ -18,10 +18,6 @@ export default function LoginLandingScreen({ navigation }) {
             </LinearGradient>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.googleBtn} activeOpacity={0.85} onPress={() => {}}>
-            <Ionicons name="logo-google" size={20} color="#3C3C3C" style={{ marginRight: 10 }} />
-            <Text style={styles.googleText}>Sign in with Google</Text>
-          </TouchableOpacity>
         </View>
       </View>
     </SafeAreaView>
@@ -54,22 +50,6 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   primaryText: { fontWeight: '700', color: '#3C2C21' },
-  googleBtn: {
-    width: '100%',
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 14,
-    borderRadius: 20,
-    alignItems: 'center',
-    marginTop: 12,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
-  },
-  googleText: { color: '#3C3C3C', fontWeight: '600' },
 });
 
 

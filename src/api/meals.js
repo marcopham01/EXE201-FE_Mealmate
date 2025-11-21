@@ -127,6 +127,10 @@ async function getAuthHeaders() {
   const headers = { 'Content-Type': 'application/json' };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+    // Log token prefix để debug (không log full token vì bảo mật)
+    console.log('[getAuthHeaders] Token exists, length:', token.length);
+  } else {
+    console.warn('[getAuthHeaders] No access token found in AsyncStorage');
   }
   return headers;
 }
@@ -1059,6 +1063,9 @@ export async function getSavedMealsFromServer({ page = 1, limit = 20, forceRefre
       
       if (!response.ok) {
         if (response.status === 401) {
+          const errorText = await response.text();
+          console.error('[getSavedMealsFromServer] 401 Unauthorized - Response:', errorText);
+          console.error('[getSavedMealsFromServer] Headers sent:', JSON.stringify(headers));
           throw new Error('401 Unauthorized');
         }
         const errorText = await response.text();
@@ -1176,6 +1183,9 @@ export async function logMealToServer({ mealId, mealTime, date, portion = 1, not
       
       if (!response.ok) {
         if (response.status === 401) {
+          const errorText = await response.text();
+          console.error('[getMealLogsFromServer] 401 Unauthorized - Response:', errorText);
+          console.error('[getMealLogsFromServer] Headers sent:', JSON.stringify(headers));
           throw new Error('401 Unauthorized');
         }
         const errorText = await response.text();
@@ -1238,6 +1248,9 @@ export async function getMealLogsFromServer({ startDate, endDate, forceRefresh =
       
       if (!response.ok) {
         if (response.status === 401) {
+          const errorText = await response.text();
+          console.error('[getMealLogsFromServer] 401 Unauthorized - Response:', errorText);
+          console.error('[getMealLogsFromServer] Headers sent:', JSON.stringify(headers));
           throw new Error('401 Unauthorized');
         }
         const errorText = await response.text();
