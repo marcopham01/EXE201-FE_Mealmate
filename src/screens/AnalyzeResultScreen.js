@@ -279,6 +279,35 @@ export default function AnalyzeResultScreen() {
                     key={`${item.id}-${refreshKey}`} 
                     activeOpacity={0.88} 
                     style={styles.recipeShadow}
+                    onPress={() => {
+                      // Transform meal data để phù hợp với DetailsMealScreen
+                      // Tìm meal gốc từ mealsFromAPI để có đầy đủ thông tin
+                      const originalMeal = mealsFromAPI.find(m => 
+                        (m._id || m.id) === item.id
+                      );
+                      
+                      const mealData = {
+                        _id: item.id,
+                        id: item.id,
+                        name: item.name,
+                        title: item.name, // DetailsMealScreen có thể dùng title
+                        desc: item.ingredients,
+                        totalKcal: item.totalKcal,
+                        image: item.image,
+                        mealTime: item.mealTime,
+                        category: originalMeal?.category || item.category,
+                        subCategory: originalMeal?.subCategory || item.subCategory,
+                        dietType: item.dietType,
+                        estimatedTime: item.time,
+                        ingredients: originalMeal?.ingredients || [], // Giữ nguyên ingredients objects từ backend
+                        // Thêm các field khác từ originalMeal nếu có
+                        ...(originalMeal || {}),
+                      };
+                      navigation.navigate('MealDetails', { 
+                        mealId: item.id, 
+                        meal: mealData 
+                      });
+                    }}
                   >
                     <View style={styles.recipeCard}>
                       <View style={{ flex: 1, padding: 14 }}>

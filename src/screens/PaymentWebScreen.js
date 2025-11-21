@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
@@ -14,6 +14,7 @@ export default function PaymentWebScreen({ route, navigation }) {
   const { setPremiumActive, refreshPremiumStatus } = usePremium();
   const [checking, setChecking] = React.useState(false);
   const [token, setToken] = React.useState(route.params?.token || null);
+  const [showSuccessModal, setShowSuccessModal] = React.useState(false);
 
   React.useEffect(() => {
     (async () => {
@@ -68,9 +69,7 @@ export default function PaymentWebScreen({ route, navigation }) {
             await refreshPremiumStatus();
             // Set premium active sau khi refresh để đảm bảo UI cập nhật
             setPremiumActive(true);
-            alert('Thanh toán thành công!');
-            // Navigate tới onboarding để nhập thông tin BMI
-            navigation.reset({ index: 0, routes: [{ name: 'OnboardingGoal' }] });
+            setShowSuccessModal(true);
             return;
           }
         }
@@ -162,9 +161,8 @@ export default function PaymentWebScreen({ route, navigation }) {
         await refreshPremiumStatus();
         // Set premium active sau khi refresh để đảm bảo UI cập nhật
         setPremiumActive(true);
-        alert('Thanh toán thành công!');
-        // Navigate tới onboarding để nhập thông tin BMI
-        navigation.reset({ index: 0, routes: [{ name: 'OnboardingGoal' }] });
+        setShowSuccessModal(true);
+        return;
       } else {
         const mapBrief = (lastItems || []).slice(0, 10).map((t) => ({
           code: t?.order_code ?? t?.orderCode,
@@ -188,9 +186,7 @@ export default function PaymentWebScreen({ route, navigation }) {
             await refreshPremiumStatus();
             // Set premium active sau khi refresh để đảm bảo UI cập nhật
             setPremiumActive(true);
-            alert('Thanh toán thành công!');
-            // Navigate tới onboarding để nhập thông tin BMI
-            navigation.reset({ index: 0, routes: [{ name: 'OnboardingGoal' }] });
+            setShowSuccessModal(true);
             return;
           }
         } catch (_) { /* ignore */ }
@@ -207,6 +203,12 @@ export default function PaymentWebScreen({ route, navigation }) {
     } finally {
       setChecking(false);
     }
+  };
+
+  const handleSuccessModalClose = () => {
+    setShowSuccessModal(false);
+    // Navigate tới onboarding để nhập thông tin BMI
+    navigation.reset({ index: 0, routes: [{ name: 'OnboardingGoal' }] });
   };
 
   return (
@@ -233,6 +235,42 @@ export default function PaymentWebScreen({ route, navigation }) {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Modal thông báo thanh toán thành công */}
+      <Modal
+        visible={showSuccessModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleSuccessModalClose}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={styles.successIconContainer}>
+                <Ionicons name="checkmark-circle" size={64} color="#34A853" />
+              </View>
+              <Text style={styles.modalTitle}>Thanh toán thành công!</Text>
+            </View>
+
+            <View style={styles.modalBody}>
+              <Text style={styles.modalMessage}>
+                Cảm ơn bạn đã thanh toán. Tài khoản Premium của bạn đã được kích hoạt.
+              </Text>
+              <Text style={styles.modalSubMessage}>
+                Bây giờ bạn có thể sử dụng tất cả các tính năng Premium không giới hạn!
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={handleSuccessModalClose}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalButtonText}>Tiếp tục</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -276,5 +314,80 @@ const styles = StyleSheet.create({
   checkText: { 
     color: '#3C2C21', 
     fontWeight: '900' 
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    width: '100%',
+    maxWidth: 400,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  modalHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  successIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#E8F5E9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#3C2C21',
+    textAlign: 'center',
+  },
+  modalBody: {
+    marginBottom: 24,
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: '#6F5B4A',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 12,
+  },
+  modalSubMessage: {
+    fontSize: 15,
+    color: '#9A8E83',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  modalButton: {
+    width: '100%',
+    minHeight: 52,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    backgroundColor: '#F2CF7F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#3C2C21',
+    textAlign: 'center',
   },
 });

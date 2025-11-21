@@ -124,14 +124,16 @@ function removeVietnameseTones(str) {
 // Hàm lấy token để gửi request có authentication (nếu cần)
 async function getAuthHeaders() {
   const token = await AsyncStorage.getItem('accessToken');
-  const headers = { 'Content-Type': 'application/json' };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-    // Log token prefix để debug (không log full token vì bảo mật)
-    console.log('[getAuthHeaders] Token exists, length:', token.length);
-  } else {
+  if (!token) {
     console.warn('[getAuthHeaders] No access token found in AsyncStorage');
+    throw new Error('Missing access token');
   }
+  const headers = { 
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  };
+  // Log token prefix để debug (không log full token vì bảo mật)
+  console.log('[getAuthHeaders] Token exists, length:', token.length);
   return headers;
 }
 
@@ -935,7 +937,29 @@ export async function analyzeIngredientsFromImage({ imageUri, userId, heightCm, 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[analyzeIngredientsFromImage] HTTP error:', response.status, errorText);
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
+      
+      // Parse error response từ backend (có thể là JSON)
+      let errorData = null;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch (e) {
+        // Nếu không parse được, dùng errorText gốc
+      }
+      
+      // Tạo error object với thông tin chi tiết
+      const error = new Error(errorData?.message || `HTTP ${response.status}: ${errorText}`);
+      error.status = response.status;
+      error.limitReached = errorData?.limitReached || false;
+      error.errorData = errorData;
+      
+      console.log('[analyzeIngredientsFromImage] Error object:', {
+        status: error.status,
+        limitReached: error.limitReached,
+        errorData: error.errorData,
+        message: error.message
+      });
+      
+      throw error;
     }
 
     const result = await handleJson(response);

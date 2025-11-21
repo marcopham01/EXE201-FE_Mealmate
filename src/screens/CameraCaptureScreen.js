@@ -5,11 +5,13 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { usePremium } from '../context/PremiumContext';
 
 export default function CameraCaptureScreen() {
   const cameraRef = useRef(null);
   const navigation = useNavigation();
   const isFocused = useIsFocused();
+  const { premiumActive } = usePremium();
   const [permission, requestPermission] = useCameraPermissions();
   const [cameraReady, setCameraReady] = useState(false);
   const [mode, setMode] = useState('quick'); // 'quick' hoặc 'library'
@@ -189,6 +191,14 @@ export default function CameraCaptureScreen() {
           >
             <Ionicons name="camera-reverse" size={24} color="#FFFFFF" />
           </TouchableOpacity>
+
+          {/* Badge thông báo giới hạn cho Free User */}
+          {!premiumActive && (
+            <View style={styles.limitBadge}>
+              <Ionicons name="information-circle" size={16} color="#FFFFFF" />
+              <Text style={styles.limitBadgeText}>3 lần/ngày</Text>
+            </View>
+          )}
 
           <View pointerEvents="none" style={styles.overlay}>
             <View style={styles.tl} />
@@ -380,5 +390,25 @@ const styles = StyleSheet.create({
   },
   activeText: {
     color: '#3C2C21',
+  },
+  limitBadge: {
+    position: 'absolute',
+    top: 100,
+    left: 20,
+    right: 20,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    gap: 6,
+  },
+  limitBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

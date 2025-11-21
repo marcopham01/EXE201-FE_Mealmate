@@ -97,13 +97,21 @@ export async function callWithAutoRefresh(apiCall) {
     // Kiểm tra nếu là lỗi 401 (Unauthorized) - token hết hạn
     // Check trong message hoặc status code
     const errorMessage = error.message || '';
+    const isMissingToken = errorMessage.toLowerCase().includes('missing access token');
     const isUnauthorized = errorMessage.includes('401') || 
                           errorMessage.includes('Unauthorized') ||
                           errorMessage.toLowerCase().includes('token expired') ||
                           errorMessage.toLowerCase().includes('invalid token') ||
-                          errorMessage.toLowerCase().includes('missing access token');
+                          isMissingToken;
     
     if (isUnauthorized) {
+      // Nếu không có token, không thử refresh
+      if (isMissingToken) {
+        await AsyncStorage.removeItem('accessToken');
+        await AsyncStorage.removeItem('refreshToken');
+        throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      }
+      
       try {
         // Thử refresh token
         await refreshTokens();
