@@ -10,8 +10,20 @@ export default function OnboardingGoalScreen({ navigation }) {
   // Refresh premium status khi màn hình được focus (đặc biệt sau khi thanh toán)
   useFocusEffect(
     React.useCallback(() => {
-      // Refresh premium status để đảm bảo có premium sau khi thanh toán
-      refreshPremiumStatus();
+      // Refresh premium status ngay lập tức và retry song song (không đợi)
+      refreshPremiumStatus().catch(() => {});
+      // Retry sau 200ms
+      const timeout1 = setTimeout(() => {
+        refreshPremiumStatus().catch(() => {});
+      }, 200);
+      // Retry sau 500ms
+      const timeout2 = setTimeout(() => {
+        refreshPremiumStatus().catch(() => {});
+      }, 500);
+      return () => {
+        clearTimeout(timeout1);
+        clearTimeout(timeout2);
+      };
     }, [refreshPremiumStatus])
   );
 

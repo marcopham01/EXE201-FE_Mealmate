@@ -11,7 +11,7 @@ const PremiumContext = React.createContext({
 export function PremiumProvider({ children }) {
   const [premiumActive, setPremiumActiveState] = React.useState(false);
 
-  // Hàm kiểm tra premium status từ server
+  // Hàm kiểm tra premium status từ server (tối ưu để nhanh hơn)
   const checkPremiumFromServer = React.useCallback(async () => {
     try {
       const token = await AsyncStorage.getItem('accessToken');
@@ -22,7 +22,7 @@ export function PremiumProvider({ children }) {
         return;
       }
 
-      // Fetch profile từ server để lấy trạng thái premium thực tế
+      // Fetch profile từ server để lấy trạng thái premium thực tế (không cache để có data mới nhất)
       const profile = await getProfile();
       // Kiểm tra nhiều format response có thể có
       const premiumMembership = profile?.data?.premiumMembership || profile?.user?.premiumMembership || profile?.premiumMembership;

@@ -1,11 +1,14 @@
 {
   "cli": {
-    "version": ">= 3.18.0"
+    "version": ">= 3.18.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "preview": {
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease",
+        "image": "latest"
       }
     },
     "production": {

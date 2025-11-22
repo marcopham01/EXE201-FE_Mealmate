@@ -65,13 +65,18 @@ export default function PaymentWebScreen({ route, navigation }) {
           const vr = await verifyPayment({ orderCode }, tk);
           console.log('[PaymentCheck] verifyPayment response', vr);
           if (normalizeIsPaid(vr) || ['paid','success','succeeded','completed','complete'].includes(String(vr?.status).toLowerCase())) {
-            // Đợi một chút để backend kịp update
-            await delay(1000);
-            // Đợi refresh premium status từ server để đảm bảo backend đã update
-            await refreshPremiumStatus();
-            // Đợi thêm một chút nữa để đảm bảo state được cập nhật
-            await delay(500);
+            // Optimistic update: set premium ngay để UI phản hồi nhanh
+            setPremiumActive(true);
             setShowSuccessModal(true);
+            // Refresh premium status ngay lập tức và retry song song (không block UI)
+            (async () => {
+              // Refresh ngay lập tức (không delay)
+              refreshPremiumStatus().catch(() => {});
+              // Retry sau 200ms
+              setTimeout(() => refreshPremiumStatus().catch(() => {}), 200);
+              // Retry sau 500ms
+              setTimeout(() => refreshPremiumStatus().catch(() => {}), 500);
+            })();
             return;
           }
         }
@@ -159,13 +164,18 @@ export default function PaymentWebScreen({ route, navigation }) {
       }
 
       if (paidOk) {
-        // Đợi một chút để backend kịp update
-        await delay(1000);
-        // Đợi refresh premium status từ server để đảm bảo backend đã update
-        await refreshPremiumStatus();
-        // Đợi thêm một chút nữa để đảm bảo state được cập nhật
-        await delay(500);
+        // Optimistic update: set premium ngay để UI phản hồi nhanh
+        setPremiumActive(true);
         setShowSuccessModal(true);
+        // Refresh premium status ngay lập tức và retry song song (không block UI)
+        (async () => {
+          // Refresh ngay lập tức (không delay)
+          refreshPremiumStatus().catch(() => {});
+          // Retry sau 200ms
+          setTimeout(() => refreshPremiumStatus().catch(() => {}), 200);
+          // Retry sau 500ms
+          setTimeout(() => refreshPremiumStatus().catch(() => {}), 500);
+        })();
         return;
       } else {
         const mapBrief = (lastItems || []).slice(0, 10).map((t) => ({
@@ -186,13 +196,18 @@ export default function PaymentWebScreen({ route, navigation }) {
           const notExpired = expires ? new Date(expires).getTime() > Date.now() : false;
           console.log('[PaymentCheck] Profile premium', { active, expires });
           if (active && notExpired) {
-            // Đợi một chút để backend kịp update
-            await delay(1000);
-            // Đợi refresh premium status từ server để đảm bảo backend đã update
-            await refreshPremiumStatus();
-            // Đợi thêm một chút nữa để đảm bảo state được cập nhật
-            await delay(500);
+            // Optimistic update: set premium ngay để UI phản hồi nhanh
+            setPremiumActive(true);
             setShowSuccessModal(true);
+            // Refresh premium status ngay lập tức và retry song song (không block UI)
+            (async () => {
+              // Refresh ngay lập tức (không delay)
+              refreshPremiumStatus().catch(() => {});
+              // Retry sau 200ms
+              setTimeout(() => refreshPremiumStatus().catch(() => {}), 200);
+              // Retry sau 500ms
+              setTimeout(() => refreshPremiumStatus().catch(() => {}), 500);
+            })();
             return;
           }
         } catch (_) { /* ignore */ }
@@ -213,11 +228,9 @@ export default function PaymentWebScreen({ route, navigation }) {
 
   const handleSuccessModalClose = async () => {
     setShowSuccessModal(false);
-    // Đợi thêm một chút để đảm bảo backend đã update hoàn toàn
-    await new Promise(resolve => setTimeout(resolve, 500));
-    // Refresh lại premium status một lần nữa trước khi navigate
-    await refreshPremiumStatus();
-    // Navigate tới onboarding để nhập thông tin BMI
+    // Refresh premium status trong background (không block navigation)
+    refreshPremiumStatus().catch(err => console.warn('[Payment] Refresh premium error:', err));
+    // Navigate ngay lập tức (không đợi)
     navigation.reset({ index: 0, routes: [{ name: 'OnboardingGoal' }] });
   };
 

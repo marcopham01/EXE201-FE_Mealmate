@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -29,7 +29,8 @@
         "CAMERA",
         "READ_MEDIA_IMAGES"
       ],
-      "package": "com.longng.MealMate"
+      "package": "com.longng.MealMate",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -38,6 +39,9 @@
       "eas": {
         "projectId": "7a4d08b6-90e5-4198-bc01-2c8b521c6f01"
       }
-    }
+    },
+    "plugins": [
+      "expo-web-browser"
+    ]
   }
 }
