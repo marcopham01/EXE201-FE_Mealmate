@@ -19,8 +19,9 @@ export default function PremiumScreen({ navigation }) {
     try {
       const res = await createPaymentLink({ premiumPackageType: 'trial' });
       setPremiumActive(true);
-      // Refresh premium status từ server để đảm bảo đồng bộ
-      refreshPremiumStatus();
+      // Refresh premium status từ server với retry để đảm bảo đồng bộ
+      // Thử tối đa 3 lần, mỗi lần cách 1.5 giây
+      await refreshPremiumStatus({ maxRetries: 3, retryDelay: 1500 });
       // Push cục bộ: dùng thử thành công
       pushLocalNotification({ title: 'Gói cao cấp', body: 'Kích hoạt dùng thử thành công!' });
       alert(res?.message || 'Kích hoạt dùng thử thành công');

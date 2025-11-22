@@ -67,8 +67,8 @@ export default function PaymentWebScreen({ route, navigation }) {
           if (normalizeIsPaid(vr) || ['paid','success','succeeded','completed','complete'].includes(String(vr?.status).toLowerCase())) {
             // Đợi một chút để backend kịp update
             await delay(1000);
-            // Đợi refresh premium status từ server để đảm bảo backend đã update
-            await refreshPremiumStatus();
+            // Refresh premium status với retry mechanism (thử tối đa 5 lần, mỗi lần cách 2 giây)
+            await refreshPremiumStatus({ maxRetries: 5, retryDelay: 2000 });
             // Đợi thêm một chút nữa để đảm bảo state được cập nhật
             await delay(500);
             setShowSuccessModal(true);
@@ -161,8 +161,9 @@ export default function PaymentWebScreen({ route, navigation }) {
       if (paidOk) {
         // Đợi một chút để backend kịp update
         await delay(1000);
-        // Đợi refresh premium status từ server để đảm bảo backend đã update
-        await refreshPremiumStatus();
+        // Refresh premium status với retry mechanism (thử tối đa 5 lần, mỗi lần cách 2 giây)
+        // Điều này đảm bảo rằng nếu backend chưa kịp update ngay, app sẽ tiếp tục kiểm tra
+        await refreshPremiumStatus({ maxRetries: 5, retryDelay: 2000 });
         // Đợi thêm một chút nữa để đảm bảo state được cập nhật
         await delay(500);
         setShowSuccessModal(true);
@@ -188,8 +189,8 @@ export default function PaymentWebScreen({ route, navigation }) {
           if (active && notExpired) {
             // Đợi một chút để backend kịp update
             await delay(1000);
-            // Đợi refresh premium status từ server để đảm bảo backend đã update
-            await refreshPremiumStatus();
+            // Refresh premium status với retry mechanism (thử tối đa 5 lần, mỗi lần cách 2 giây)
+            await refreshPremiumStatus({ maxRetries: 5, retryDelay: 2000 });
             // Đợi thêm một chút nữa để đảm bảo state được cập nhật
             await delay(500);
             setShowSuccessModal(true);
@@ -215,8 +216,8 @@ export default function PaymentWebScreen({ route, navigation }) {
     setShowSuccessModal(false);
     // Đợi thêm một chút để đảm bảo backend đã update hoàn toàn
     await new Promise(resolve => setTimeout(resolve, 500));
-    // Refresh lại premium status một lần nữa trước khi navigate
-    await refreshPremiumStatus();
+    // Refresh lại premium status một lần nữa trước khi navigate (với retry để đảm bảo)
+    await refreshPremiumStatus({ maxRetries: 3, retryDelay: 1500 });
     // Navigate tới onboarding để nhập thông tin BMI
     navigation.reset({ index: 0, routes: [{ name: 'OnboardingGoal' }] });
   };

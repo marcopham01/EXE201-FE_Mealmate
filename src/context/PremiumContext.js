@@ -12,6 +12,7 @@ export function PremiumProvider({ children }) {
   const [premiumActive, setPremiumActiveState] = React.useState(false);
 
   // Hàm kiểm tra premium status từ server
+  // Trả về boolean để biết premium có active không
   const checkPremiumFromServer = React.useCallback(async () => {
     try {
       const token = await AsyncStorage.getItem('accessToken');
@@ -19,7 +20,7 @@ export function PremiumProvider({ children }) {
       if (!token) {
         setPremiumActiveState(false);
         await AsyncStorage.removeItem('premiumActive');
-        return;
+        return false;
       }
 
       // Fetch profile từ server để lấy trạng thái premium thực tế
@@ -65,6 +66,7 @@ export function PremiumProvider({ children }) {
       setPremiumActiveState(finalStatus);
       // Vẫn lưu vào AsyncStorage để cache, nhưng sẽ được override bởi server check
       await AsyncStorage.setItem('premiumActive', finalStatus ? 'true' : 'false');
+      return finalStatus;
     } catch (error) {
       // Nếu lỗi (ví dụ: token hết hạn, không đăng nhập), set premium = false
       const errorMsg = error?.message || '';
@@ -74,6 +76,7 @@ export function PremiumProvider({ children }) {
       }
       setPremiumActiveState(false);
       await AsyncStorage.removeItem('premiumActive');
+      return false;
     }
   }, []);
 
@@ -90,8 +93,29 @@ export function PremiumProvider({ children }) {
 
   // Hàm refresh premium status từ server (export để có thể gọi từ bên ngoài)
   // Trả về Promise để có thể await được
-  const refreshPremiumStatus = React.useCallback(async () => {
-    return await checkPremiumFromServer();
+  // Có thể retry nhiều lần nếu cần (sau khi thanh toán)
+  const refreshPremiumStatus = React.useCallback(async (options = {}) => {
+    const { retries = 0, retryDelay = 2000, maxRetries = 0 } = options;
+    
+    // Thử check ngay lần đầu và lấy kết quả
+    const isActive = await checkPremiumFromServer();
+    
+    // Nếu premium đã active, không cần retry nữa
+    if (isActive) {
+      console.log('[PremiumContext] Premium confirmed active, stopping retries');
+      return;
+    }
+    
+    // Nếu có yêu cầu retry và chưa đạt max retries và premium chưa active, tiếp tục retry
+    if (maxRetries > 0 && retries < maxRetries) {
+      console.log(`[PremiumContext] Premium not active yet, retrying... (${retries + 1}/${maxRetries})`);
+      // Đợi một chút trước khi retry
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+      // Retry lại
+      return await refreshPremiumStatus({ retries: retries + 1, retryDelay, maxRetries });
+    }
+    
+    return;
   }, [checkPremiumFromServer]);
 
   return (
