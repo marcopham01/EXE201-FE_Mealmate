@@ -98,8 +98,15 @@ export default function HomeScreen() {
     // Refresh premium status khi quay lại HomeScreen để đảm bảo hiển thị đúng
     // Đặc biệt quan trọng sau khi hoàn thành thanh toán và onboarding
     // Cũng refresh khi bấm vào tab "Nhật ký" (sẽ trigger focus event từ BottomTabs)
-    refreshPremiumStatus();
-  }, [setSelectedDayIdx, refreshPremiumStatus]));
+    // Nếu premium chưa active, thử refresh với retry để đảm bảo cập nhật kịp thời
+    if (!premiumActive) {
+      // Nếu chưa premium, thử refresh với retry (có thể user vừa thanh toán)
+      refreshPremiumStatus({ maxRetries: 2, retryDelay: 1500 });
+    } else {
+      // Nếu đã premium, chỉ refresh một lần để đảm bảo đồng bộ
+      refreshPremiumStatus();
+    }
+  }, [setSelectedDayIdx, refreshPremiumStatus, premiumActive]));
 
   const selectedDate = useMemo(() => weekDates[selectedDayIdx], [weekDates, selectedDayIdx]);
   const dateStr = useMemo(() => 
